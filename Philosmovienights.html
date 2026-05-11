@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Philos Movie Nights</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+        :root {
+            --primary: #e50914;
+            --primary-dark: #b00710;
+            --bg: #0a0a0a;
+            --side-bg: #111111;
+            --card-bg: #1a1a1a;
+            --surface: #161616;
+            --text: #ffffff;
+            --text-muted: #8e99a7;
+            --border: #2a2a2a;
+            --accent-blue: #0077ff;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--text); font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+        /* Mobile Header */
+        .mobile-header { display: none; background: linear-gradient(160deg, rgba(229,9,20,0.08) 0%, var(--side-bg) 40%); padding: 12px 16px; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(229,9,20,0.15); position: relative; overflow: hidden; }
+        .mobile-header::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent); animation: logoSweep 5s ease-in-out infinite; pointer-events: none; }
+        .mobile-logo { font-weight: 900; font-size: 17px; letter-spacing: -0.3px; background: linear-gradient(135deg, #ffffff 0%, #e50914 60%, #ff6b35 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; position: relative; z-index: 1; }
+        .mobile-nav { display: flex; gap: 18px; color: var(--text-muted); font-size: 18px; position: relative; z-index: 1; }
+        .mobile-nav i { cursor: pointer; transition: color 0.2s; }
+        .mobile-nav i:hover { color: white; }
+
+        /* Sidebar */
+        aside { width: 240px; background: var(--side-bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; overflow-y: auto; }
+
+        /* Glossy Logo */
+        .logo-area { padding: 22px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(229,9,20,0.15); cursor: pointer; background: linear-gradient(160deg, rgba(229,9,20,0.1) 0%, rgba(15,15,15,1) 60%); position: relative; overflow: hidden; transition: all 0.3s; }
+        .logo-area::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent); animation: logoSweep 5s ease-in-out infinite; pointer-events: none; }
+        @keyframes logoSweep { 0% { left: -100%; } 50%, 100% { left: 100%; } }
+        .logo-area:hover { background: linear-gradient(160deg, rgba(229,9,20,0.15) 0%, rgba(15,15,15,1) 60%); }
+        .logo-icon { width: 42px; height: 42px; background: linear-gradient(135deg, #ff2222 0%, #e50914 50%, #cc0000 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 20px; color: white; box-shadow: 0 4px 20px rgba(229,9,20,0.5), inset 0 1px 0 rgba(255,255,255,0.25), 0 0 30px rgba(229,9,20,0.2); text-shadow: 0 1px 3px rgba(0,0,0,0.4); flex-shrink: 0; position: relative; }
+        .logo-icon::after { content: ''; position: absolute; inset: 0; border-radius: 10px; background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, transparent 50%); pointer-events: none; }
+        .logo-text { font-size: 15px; font-weight: 800; line-height: 1.35; position: relative; z-index: 1; }
+        .logo-text .brand-top { display: block; color: #ffffff; letter-spacing: 0.3px; }
+        .logo-text .brand-bottom { display: block; background: linear-gradient(90deg, #e50914, #ff6b35, #ff4444, #e50914); background-size: 200% 100%; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; font-size: 14px; animation: brandShimmer 3s ease-in-out infinite; }
+        @keyframes brandShimmer { 0% { background-position: 0% center; } 100% { background-position: 200% center; } }
+
+        /* Navigation */
+        .nav-section { padding: 16px 0 8px; }
+        .nav-label { padding: 4px 20px 8px; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-muted); }
+        .nav-item { padding: 10px 20px; display: flex; align-items: center; gap: 12px; color: var(--text-muted); cursor: pointer; transition: all 0.15s; font-size: 13px; font-weight: 500; position: relative; }
+        .nav-item:hover { color: white; background: rgba(255,255,255,0.05); }
+        .nav-item.active { color: white; background: rgba(229, 9, 20, 0.12); }
+        .nav-item.active::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--primary); border-radius: 0 3px 3px 0; }
+        .nav-item i { width: 18px; text-align: center; font-size: 14px; }
+        .nav-item .badge { background: var(--primary); color: white; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: auto; }
+
+        .genre-list { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+        .genre-list.open { max-height: 500px; }
+        .genre-item { padding: 8px 20px 8px 52px; color: var(--text-muted); cursor: pointer; font-size: 12px; transition: all 0.15s; }
+        .genre-item:hover { color: white; background: rgba(255,255,255,0.03); }
+        .genre-item.active { color: var(--primary); }
+
+        /* Main Area */
+        main { flex-grow: 1; overflow-y: auto; width: 100%; }
+        header { padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: rgba(10, 10, 10, 0.92); backdrop-filter: blur(12px); z-index: 100; border-bottom: 1px solid rgba(255,255,255,0.05); gap: 16px; }
+        .search-box { background: var(--surface); border: 1px solid var(--border); padding: 10px 16px 10px 38px; border-radius: 10px; color: white; width: 100%; max-width: 360px; outline: none; font-size: 13px; transition: border-color 0.2s; }
+        .search-box:focus { border-color: var(--primary); }
+        .search-wrap { position: relative; width: 100%; max-width: 360px; }
+        .search-wrap i { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 13px; pointer-events: none; }
+        .header-actions { display: flex; align-items: center; gap: 12px; }
+        #user-stats { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+
+        /* Content */
+        .content-body { padding: 20px; }
+        .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+        .section-header h2 { font-size: 18px; font-weight: 700; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
+
+        /* Page Title */
+        .page-title-section { margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+        .page-title { font-size: 28px; font-weight: 800; display: flex; align-items: center; gap: 12px; }
+        .page-title i { color: var(--primary); }
+        .page-subtitle { color: var(--text-muted); font-size: 14px; margin-top: 6px; }
+
+        /* Section Divider */
+        .section-divider { height: 1px; background: linear-gradient(to right, transparent, var(--border), transparent); margin: 32px 0; }
+
+        /* Cards */
+        .card { background: var(--card-bg); border-radius: 10px; overflow: hidden; cursor: pointer; position: relative; transition: transform 0.2s, box-shadow 0.2s; }
+        .card:hover { transform: translateY(-6px); box-shadow: 0 12px 30px rgba(0,0,0,0.5); }
+        .card img { width: 100%; display: block; aspect-ratio: 2/3; object-fit: cover; }
+        .card-info { padding: 10px; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .card-rating { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.75); backdrop-filter: blur(4px); padding: 3px 7px; border-radius: 6px; font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 3px; }
+        .card-rating i { color: #f5c518; font-size: 9px; }
+        .card-type { position: absolute; top: 8px; right: 8px; background: var(--primary); padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+
+        /* Trailer Overlay */
+        .trailer-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 5; border-radius: 10px; overflow: hidden; }
+        .trailer-overlay.active { opacity: 1; }
+        .trailer-overlay iframe { width: 100%; height: 100%; border: none; }
+        .trailer-loading { color: var(--text-muted); font-size: 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .trailer-loading i { font-size: 24px; color: var(--primary); }
+
+        /* Player */
+        #player-section { display: none; background: #000; padding: 16px 20px; }
+        .player-container { width: 100%; aspect-ratio: 16/9; border-radius: 10px; overflow: hidden; background: #000; }
+        iframe { width: 100%; height: 100%; border: none; }
+        .player-title { font-size: 18px; font-weight: 700; margin: 12px 0 8px; }
+        .player-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 8px 0; }
+        .close-player { background: none; border: 1px solid var(--border); color: var(--text-muted); padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 12px; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
+        .close-player:hover { border-color: var(--primary); color: var(--primary); }
+        .fullscreen-btn { background: none; border: 1px solid var(--border); color: var(--text-muted); padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 12px; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
+        .fullscreen-btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+        .player-container:fullscreen, .player-container:-webkit-full-screen { width: 100vw; height: 100vh; aspect-ratio: auto; border-radius: 0; }
+        .player-container:fullscreen iframe, .player-container:-webkit-full-screen iframe { width: 100%; height: 100%; }
+        .player-container.css-fullscreen { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 99999; border-radius: 0; aspect-ratio: auto; background: #000; }
+        .player-container.css-fullscreen iframe { width: 100%; height: 100%; }
+        body.fullscreen-active { overflow: hidden !important; }
+        .css-fullscreen-close { position: fixed; top: 16px; right: 16px; z-index: 100000; width: 44px; height: 44px; border-radius: 50%; background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.2); color: white; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
+        .css-fullscreen-close:hover { background: rgba(229,9,20,0.8); }
+
+        /* Server Buttons */
+        .server-btn { padding: 6px 14px; background: var(--surface); color: white; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; white-space: nowrap; }
+        .server-btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+        .server-btn.active { background: var(--primary); border-color: var(--primary); }
+        .server-btn.trailer-btn { background: transparent; border-color: #c4302b; color: #ff4444; }
+        .server-btn.trailer-btn:hover { background: #c4302b; color: white; }
+        .server-btn.save-btn { border-color: var(--accent-blue); color: var(--accent-blue); }
+        .server-btn.save-btn:hover { background: var(--accent-blue); color: white; }
+        .server-btn.save-btn.saved { background: var(--accent-blue); color: white; }
+        .divider { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+
+        /* TV Controls */
+        .tv-controls { display: none; align-items: center; gap: 12px; padding: 12px 0; flex-wrap: wrap; }
+        .tv-controls.visible { display: flex; }
+        .season-select, .episode-select { background: var(--surface); color: white; border: 1px solid var(--border); padding: 8px 12px; border-radius: 8px; font-size: 13px; cursor: pointer; min-width: 140px; outline: none; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%238e99a7' d='M1.41 0L6 4.58 10.59 0 12 1.41l-6 6-6-6z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+        .season-select:hover, .episode-select:hover { border-color: var(--primary); }
+        .episode-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); gap: 6px; padding: 8px 0; max-width: 600px; }
+        .ep-btn { padding: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: white; cursor: pointer; font-size: 12px; font-weight: 600; text-align: center; transition: all 0.15s; }
+        .ep-btn:hover { border-color: var(--primary); background: rgba(229, 9, 20, 0.15); }
+        .ep-btn.active { background: var(--primary); border-color: var(--primary); }
+
+        /* Hero */
+        .home-hero { padding: 0 0 24px; }
+        .hero-banner { position: relative; width: 100%; height: 340px; border-radius: 14px; overflow: hidden; margin-bottom: 20px; cursor: pointer; }
+        .hero-banner img { width: 100%; height: 100%; object-fit: cover; }
+        .hero-gradient { position: absolute; inset: 0; background: linear-gradient(to top, rgba(10,10,10,1) 0%, rgba(10,10,10,0.6) 40%, transparent 100%); }
+        .hero-content { position: absolute; bottom: 24px; left: 24px; right: 24px; z-index: 2; }
+        .hero-content h1 { font-size: 28px; font-weight: 800; margin-bottom: 8px; }
+        .hero-content p { font-size: 13px; color: var(--text-muted); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 600px; }
+        .hero-actions { display: flex; gap: 10px; margin-top: 14px; }
+        .hero-btn { padding: 10px 24px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
+        .hero-btn.primary { background: var(--primary); color: white; }
+        .hero-btn.primary:hover { background: var(--primary-dark); }
+        .hero-btn.secondary { background: rgba(255,255,255,0.15); color: white; backdrop-filter: blur(4px); }
+        .hero-btn.secondary:hover { background: rgba(255,255,255,0.25); }
+
+        /* Scroll Rows */
+        .content-row { margin-bottom: 28px; }
+        .content-row h3 { font-size: 16px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .scroll-row-wrapper { position: relative; }
+        .scroll-row { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; scroll-behavior: smooth; }
+        .scroll-row::-webkit-scrollbar { height: 4px; }
+        .scroll-row::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        .scroll-card { flex-shrink: 0; width: 150px; background: var(--card-bg); border-radius: 10px; overflow: hidden; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; position: relative; }
+        .scroll-card:hover { transform: translateY(-4px); box-shadow: 0 8px 20px rgba(0,0,0,0.4); }
+        .scroll-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; }
+        .scroll-card .card-info { padding: 8px 10px; font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* Scroll Arrows */
+        .scroll-arrow { position: absolute; top: 50%; transform: translateY(-60%); width: 38px; height: 38px; border-radius: 50%; background: rgba(0,0,0,0.85); border: 1px solid rgba(255,255,255,0.15); color: white; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; transition: all 0.2s; opacity: 0; font-size: 14px; }
+        .scroll-row-wrapper:hover .scroll-arrow { opacity: 1; }
+        .scroll-arrow:hover { background: var(--primary); border-color: var(--primary); transform: translateY(-60%) scale(1.1); }
+        .scroll-arrow.left { left: -4px; }
+        .scroll-arrow.right { right: -4px; }
+
+        /* Filter Bar */
+        .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+        .filter-select { background: var(--surface); border: 1px solid var(--border); color: white; padding: 9px 34px 9px 12px; border-radius: 8px; font-size: 13px; font-family: inherit; cursor: pointer; outline: none; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%238e99a7' d='M1.41 0L6 4.58 10.59 0 12 1.41l-6 6-6-6z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; transition: border-color 0.2s; min-width: 130px; }
+        .filter-select:hover, .filter-select:focus { border-color: var(--primary); }
+        .filter-select option { background: var(--surface); color: white; }
+        .filter-label { font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .filter-reset { background: none; border: 1px solid var(--border); color: var(--text-muted); padding: 9px 16px; border-radius: 8px; font-size: 12px; cursor: pointer; transition: all 0.2s; font-family: inherit; }
+        .filter-reset:hover { color: var(--primary); border-color: var(--primary); }
+
+        /* Pagination */
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 28px; padding: 20px 0; flex-wrap: wrap; }
+        .page-btn { min-width: 38px; height: 38px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: white; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s; display: flex; align-items: center; justify-content: center; font-family: inherit; }
+        .page-btn:hover:not(:disabled) { border-color: var(--primary); background: rgba(229,9,20,0.15); }
+        .page-btn.active { background: var(--primary); border-color: var(--primary); }
+        .page-btn:disabled { opacity: 0.35; cursor: default; }
+        .page-ellipsis { color: var(--text-muted); font-size: 14px; padding: 0 4px; }
+        .page-info { color: var(--text-muted); font-size: 12px; margin-left: 12px; }
+
+        /* Back to Top */
+        .back-to-top { position: fixed; bottom: 20px; right: 20px; width: 40px; height: 40px; border-radius: 50%; background: var(--primary); color: white; border: none; cursor: pointer; font-size: 16px; display: none; align-items: center; justify-content: center; z-index: 200; box-shadow: 0 4px 12px rgba(229, 9, 20, 0.4); transition: transform 0.2s; }
+        .back-to-top:hover { transform: scale(1.1); }
+        .back-to-top.visible { display: flex; }
+
+        @media (max-width: 768px) {
+            aside { display: none; }
+            .mobile-header { display: flex; }
+            .grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
+            .scroll-card { width: 120px; }
+            header { padding: 10px 12px; }
+            .hero-banner { height: 220px; border-radius: 10px; }
+            .hero-content h1 { font-size: 20px; }
+            .content-body { padding: 12px; }
+            .episode-grid { grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); }
+            .page-title { font-size: 22px; }
+            .filter-bar { gap: 8px; }
+            .filter-select { min-width: 110px; font-size: 12px; padding: 8px 30px 8px 10px; }
+            .scroll-arrow { display: none !important; }
+            .page-btn { min-width: 34px; height: 34px; font-size: 12px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="mobile-header">
+    <div class="mobile-logo" onclick="goHome()">Philos Movie Nights</div>
+    <div class="mobile-nav">
+        <i class="fas fa-home" onclick="goHome()" title="Home"></i>
+        <i class="fas fa-film" onclick="loadMoviesPage()" title="Movies"></i>
+        <i class="fas fa-tv" onclick="loadTVPage()" title="TV Series"></i>
+        <i class="fas fa-fire" onclick="loadCategory('popular')" title="Popular"></i>
+        <i class="fas fa-star" onclick="loadCategory('top_rated')" title="Top Rated"></i>
+        <i class="fas fa-bookmark" onclick="showSaved()" title="My Library"></i>
+    </div>
+</div>
+
+<div style="display:flex; flex:1; overflow:hidden;">
+    <aside>
+        <div class="logo-area" onclick="goHome()">
+            <div class="logo-icon">P</div>
+            <div class="logo-text">
+                <span class="brand-top">Philos Movie</span>
+                <span class="brand-bottom">Nights</span>
+            </div>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-label">Menu</div>
+            <div class="nav-item active" data-page="home" onclick="goHome(this)"><i class="fas fa-home"></i> Home</div>
+            <div class="nav-item" data-page="movie" onclick="loadMoviesPage(this)"><i class="fas fa-film"></i> Movies</div>
+            <div class="nav-item" data-page="tv" onclick="loadTVPage(this)"><i class="fas fa-tv"></i> TV Series</div>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-label">Discover</div>
+            <div class="nav-item" data-page="popular" onclick="loadCategory('popular', this)"><i class="fas fa-fire"></i> Popular</div>
+            <div class="nav-item" data-page="top_rated" onclick="loadCategory('top_rated', this)"><i class="fas fa-trophy"></i> Top Rated</div>
+            <div class="nav-item" data-page="upcoming" onclick="loadCategory('upcoming', this)"><i class="fas fa-calendar"></i> Upcoming</div>
+            <div class="nav-item" onclick="toggleGenres(this)"><i class="fas fa-masks-theater"></i> Genres <i class="fas fa-chevron-down" style="margin-left:auto; font-size:10px;"></i></div>
+            <div class="genre-list" id="genreList"></div>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-label">Library</div>
+            <div class="nav-item" data-page="library" onclick="showSaved(this)"><i class="fas fa-bookmark"></i> My Library <span class="badge" id="libBadge" style="display:none;">0</span></div>
+        </div>
+    </aside>
+
+    <main id="mainArea">
+        <div id="player-section">
+            <div class="player-container" id="mount"></div>
+            <div class="player-title" id="pTitle"></div>
+            <div class="player-controls">
+                <button class="close-player" onclick="closePlayer()"><i class="fas fa-times"></i> Close</button>
+                <button class="fullscreen-btn" onclick="toggleFullscreen()"><i class="fas fa-expand"></i> Fullscreen</button>
+                <div class="divider"></div>
+                <button class="server-btn active" data-server="vidsrc" onclick="toggleServer('vidsrc', this)">VidSrc</button>
+                <button class="server-btn" data-server="embed" onclick="toggleServer('embed', this)">Embed</button>
+                <button class="server-btn" data-server="vidsrc2" onclick="toggleServer('vidsrc2', this)">VidSrc Pro</button>
+                <button class="server-btn" data-server="multiembed" onclick="toggleServer('multiembed', this)">Multi</button>
+                <button class="server-btn" data-server="autoembed" onclick="toggleServer('autoembed', this)">Auto</button>
+                <div class="divider"></div>
+                <button class="server-btn trailer-btn" onclick="openTrailer()"><i class="fab fa-youtube"></i> Trailer</button>
+                <button class="server-btn save-btn" id="saveBtn" onclick="toggleSave()"><i class="fas fa-plus"></i> Save</button>
+            </div>
+            <div class="tv-controls" id="tvControls">
+                <select class="season-select" id="seasonSelect" onchange="onSeasonChange()"></select>
+                <div class="episode-grid" id="episodeGrid"></div>
+            </div>
+        </div>
+
+        <header>
+            <div class="search-wrap">
+                <i class="fas fa-search"></i>
+                <input type="text" class="search-box" id="search" placeholder="Search movies & TV shows..." onkeyup="handleSearch()">
+            </div>
+            <div class="header-actions">
+                <div id="user-stats"></div>
+            </div>
+        </header>
+
+        <div class="content-body" id="contentBody">
+            <div class="section-header">
+                <h2 id="gridTitle">Trending Today</h2>
+            </div>
+            <div class="grid" id="mainGrid">Loading...</div>
+        </div>
+    </main>
+</div>
+
+<button class="back-to-top" id="backToTop" onclick="scrollToTop()"><i class="fas fa-arrow-up"></i></button>
+
+<script>
+    const API_KEY = 'a41cb871d9c69c87de7b0fb98e05fb93';
+    const IMG_BASE = 'https://image.tmdb.org/t/p/';
+    const TMDB = 'https://api.themoviedb.org/3';
+
+    let mode = 'movie', activeId = '', activeTitle = '', server = 'vidsrc';
+    let saved = JSON.parse(localStorage.getItem('philos_list')) || [];
+    let trailerCache = {};
+    let currentPage = 'home';
+    let tvDetails = null;
+    let currentSeason = 1;
+    let currentEpisode = 1;
+    let hoverTimer = null;
+
+    let movieFilterPage = 1;
+    let movieFilterGenre = '';
+    let movieFilterYear = '';
+    let movieFilterSort = 'popularity.desc';
+
+    let tvFilterPage = 1;
+    let tvFilterGenre = '';
+    let tvFilterYear = '';
+    let tvFilterSort = 'popularity.desc';
+
+    let categoryState = { type: '', page: 1 };
+    let genreState = { id: 0, name: '', page: 1 };
+
+    const GENRES_MOVIE = [
+        {id:28,name:'Action'},{id:12,name:'Adventure'},{id:16,name:'Animation'},{id:35,name:'Comedy'},
+        {id:80,name:'Crime'},{id:99,name:'Documentary'},{id:18,name:'Drama'},{id:10751,name:'Family'},
+        {id:14,name:'Fantasy'},{id:36,name:'History'},{id:27,name:'Horror'},{id:10402,name:'Music'},
+        {id:9648,name:'Mystery'},{id:10749,name:'Romance'},{id:878,name:'Sci-Fi'},{id:53,name:'Thriller'},
+        {id:10752,name:'War'},{id:37,name:'Western'}
+    ];
+
+    const GENRES_TV = [
+        {id:10759,name:'Action & Adventure'},{id:16,name:'Animation'},{id:35,name:'Comedy'},
+        {id:80,name:'Crime'},{id:99,name:'Documentary'},{id:18,name:'Drama'},
+        {id:10751,name:'Family'},{id:10762,name:'Kids'},{id:9648,name:'Mystery'},
+        {id:10764,name:'Reality'},{id:10765,name:'Sci-Fi & Fantasy'},{id:10768,name:'War & Politics'},
+        {id:37,name:'Western'}
+    ];
+
+    function generateYearOptions() {
+        const currentYear = new Date().getFullYear();
+        let html = '<option value="">All Years</option>';
+        for (let y = currentYear; y >= 1970; y--) {
+            html += `<option value="${y}">${y}</option>`;
+        }
+        return html;
+    }
+
+    function createRowHTML(id, title, icon, iconColor) {
+        return `
+            <div class="content-row">
+                <h3><i class="fas fa-${icon}" style="color:${iconColor};"></i> ${title}</h3>
+                <div class="scroll-row-wrapper">
+                    <button class="scroll-arrow left" onclick="scrollRow(this, -1)"><i class="fas fa-chevron-left"></i></button>
+                    <div class="scroll-row" id="${id}"></div>
+                    <button class="scroll-arrow right" onclick="scrollRow(this, 1)"><i class="fas fa-chevron-right"></i></button>
+                </div>
+            </div>
+        `;
+    }
+
+    function scrollRow(btn, direction) {
+        const wrapper = btn.parentElement;
+        const row = wrapper.querySelector('.scroll-row');
+        const scrollAmount = row.clientWidth * 0.75;
+        row.scrollBy({ left: direction * scrollAmount, behavior: 'smooth' });
+    }
+
+    function initGenres() {
+        const list = document.getElementById('genreList');
+        list.innerHTML = GENRES_MOVIE.map(g =>
+            `<div class="genre-item" onclick="loadGenre(${g.id}, '${g.name}')">${g.name}</div>`
+        ).join('');
+    }
+
+    function toggleGenres(el) {
+        const list = document.getElementById('genreList');
+        list.classList.toggle('open');
+        const chevron = el.querySelector('.fa-chevron-down');
+        if (chevron) chevron.style.transform = list.classList.contains('open') ? 'rotate(180deg)' : '';
+    }
+
+    function setActiveNav(el) {
+        document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+        document.querySelectorAll('.genre-item').forEach(i => i.classList.remove('active'));
+        if (el) el.classList.add('active');
+    }
+
+    // ========== HOME PAGE ==========
+    async function goHome(el) {
+        currentPage = 'home';
+        setActiveNav(el || document.querySelector('[data-page="home"]'));
+        document.getElementById('player-section').style.display = 'none';
+        const body = document.getElementById('contentBody');
+        body.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">Loading...</div>';
+
+        try {
+            const [trendRes, moviesRes, tvRes, topRes, nowPlayRes, upcomingRes] = await Promise.all([
+                fetch(`${TMDB}/trending/all/day?api_key=${API_KEY}`),
+                fetch(`${TMDB}/movie/popular?api_key=${API_KEY}`),
+                fetch(`${TMDB}/trending/tv/day?api_key=${API_KEY}`),
+                fetch(`${TMDB}/movie/top_rated?api_key=${API_KEY}`),
+                fetch(`${TMDB}/movie/now_playing?api_key=${API_KEY}`),
+                fetch(`${TMDB}/movie/upcoming?api_key=${API_KEY}`)
+            ]);
+            const [trend, movies, tv, top, nowPlay, upcoming] = await Promise.all([
+                trendRes.json(), moviesRes.json(), tvRes.json(), topRes.json(), nowPlayRes.json(), upcomingRes.json()
+            ]);
+
+            const featured = trend.results.find(i => i.backdrop_path) || trend.results[0];
+            const featTitle = featured.title || featured.name || 'Unknown';
+            const featType = featured.media_type || 'movie';
+
+            body.innerHTML = `
+                <div class="home-hero">
+                    <div class="hero-banner" onclick="mode='${featType}'; play('${featured.id}', '${featTitle.replace(/'/g, "\\'")}')">
+                        <img src="${IMG_BASE}w1280${featured.backdrop_path}" alt="${featTitle}">
+                        <div class="hero-gradient"></div>
+                        <div class="hero-content">
+                            <h1>${featTitle}</h1>
+                            <p>${featured.overview || ''}</p>
+                            <div class="hero-actions">
+                                <button class="hero-btn primary" onclick="event.stopPropagation(); mode='${featType}'; play('${featured.id}', '${featTitle.replace(/'/g, "\\'")}')"><i class="fas fa-play"></i> Watch Now</button>
+                                <button class="hero-btn secondary" onclick="event.stopPropagation(); previewTrailer('${featured.id}', '${featType}')"><i class="fas fa-info-circle"></i> Trailer</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                ${createRowHTML('trendRow', 'Trending Now', 'fire', '#ff6b35')}
+                ${createRowHTML('moviesRow', 'Popular Movies', 'film', 'var(--primary)')}
+                ${createRowHTML('tvRow', 'Trending TV Shows', 'tv', 'var(--accent-blue)')}
+                ${createRowHTML('topRow', 'Top Rated', 'trophy', '#f5c518')}
+                ${createRowHTML('nowPlayRow', 'Now Playing in Theaters', 'ticket-alt', '#a855f7')}
+                ${createRowHTML('upcomingRow', 'Coming Soon', 'calendar-alt', '#22d3ee')}
+            `;
+
+            renderScrollRow('trendRow', trend.results, true);
+            renderScrollRow('moviesRow', movies.results);
+            renderScrollRow('tvRow', tv.results, false, 'tv');
+            renderScrollRow('topRow', top.results);
+            renderScrollRow('nowPlayRow', nowPlay.results);
+            renderScrollRow('upcomingRow', upcoming.results);
+        } catch {
+            body.innerHTML = '<p style="padding:40px; color:var(--text-muted);">Failed to load. Please refresh.</p>';
+        }
+    }
+
+    // ========== MOVIES PAGE ==========
+    async function loadMoviesPage(el) {
+        currentPage = 'movie';
+        mode = 'movie';
+        setActiveNav(el || document.querySelector('[data-page="movie"]'));
+        document.getElementById('player-section').style.display = 'none';
+        const body = document.getElementById('contentBody');
+        body.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">Loading...</div>';
+
+        try {
+            const [popularRes, topRatedRes, nowPlayingRes, upcomingRes] = await Promise.all([
+                fetch(`${TMDB}/movie/popular?api_key=${API_KEY}`),
+                fetch(`${TMDB}/movie/top_rated?api_key=${API_KEY}`),
+                fetch(`${TMDB}/movie/now_playing?api_key=${API_KEY}`),
+                fetch(`${TMDB}/movie/upcoming?api_key=${API_KEY}`)
+            ]);
+            const [popular, topRated, nowPlaying, upcoming] = await Promise.all([
+                popularRes.json(), topRatedRes.json(), nowPlayingRes.json(), upcomingRes.json()
+            ]);
+
+            body.innerHTML = `
+                <div class="page-title-section">
+                    <h1 class="page-title"><i class="fas fa-film"></i> Movies</h1>
+                    <p class="page-subtitle">Browse popular, top rated, and upcoming films</p>
+                </div>
+                ${createRowHTML('mPopularRow', 'Popular Movies', 'fire', '#ff6b35')}
+                ${createRowHTML('mTopRatedRow', 'Top Rated', 'trophy', '#f5c518')}
+                ${createRowHTML('mNowPlayingRow', 'Now Playing', 'ticket-alt', '#a855f7')}
+                ${createRowHTML('mUpcomingRow', 'Coming Soon', 'calendar-alt', '#22d3ee')}
+                <div class="section-divider"></div>
+                <div class="section-header"><h2>Browse All Movies</h2></div>
+                <div class="filter-bar" id="movieFilterBar">
+                    <select class="filter-select" id="movieGenreFilter" onchange="movieFilterPage=1; applyMovieFilters();">
+                        <option value="">All Genres</option>
+                        ${GENRES_MOVIE.map(g => `<option value="${g.id}">${g.name}</option>`).join('')}
+                    </select>
+                    <select class="filter-select" id="movieYearFilter" onchange="movieFilterPage=1; applyMovieFilters();">
+                        ${generateYearOptions()}
+                    </select>
+                    <select class="filter-select" id="movieSortFilter" onchange="movieFilterPage=1; applyMovieFilters();">
+                        <option value="popularity.desc">Most Popular</option>
+                        <option value="vote_average.desc">Highest Rated</option>
+                        <option value="primary_release_date.desc">Newest First</option>
+                        <option value="primary_release_date.asc">Oldest First</option>
+                    </select>
+                    <button class="filter-reset" onclick="resetMovieFilters()"><i class="fas fa-redo-alt"></i> Reset</button>
+                </div>
+                <div class="grid" id="movieFilterGrid">Loading...</div>
+                <div class="pagination" id="moviePagination"></div>
+            `;
+
+            renderScrollRow('mPopularRow', popular.results);
+            renderScrollRow('mTopRatedRow', topRated.results);
+            renderScrollRow('mNowPlayingRow', nowPlaying.results);
+            renderScrollRow('mUpcomingRow', upcoming.results);
+
+            movieFilterPage = 1;
+            applyMovieFilters();
+        } catch {
+            body.innerHTML = '<p style="padding:40px; color:var(--text-muted);">Failed to load movies. Please refresh.</p>';
+        }
+    }
+
+    async function applyMovieFilters() {
+        const genreEl = document.getElementById('movieGenreFilter');
+        const yearEl = document.getElementById('movieYearFilter');
+        const sortEl = document.getElementById('movieSortFilter');
+        if (genreEl) movieFilterGenre = genreEl.value;
+        if (yearEl) movieFilterYear = yearEl.value;
+        if (sortEl) movieFilterSort = sortEl.value;
+
+        const grid = document.getElementById('movieFilterGrid');
+        if (grid) grid.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:30px; grid-column:1/-1;">Loading...</div>';
+
+        let url = `${TMDB}/discover/movie?api_key=${API_KEY}&page=${movieFilterPage}&sort_by=${movieFilterSort}`;
+        if (movieFilterGenre) url += `&with_genres=${movieFilterGenre}`;
+        if (movieFilterYear) url += `&primary_release_year=${movieFilterYear}`;
+        if (movieFilterSort === 'vote_average.desc') url += '&vote_count.gte=200';
+
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            renderGrid('movieFilterGrid', data.results);
+            renderPagination('moviePagination', data.page, Math.min(data.total_pages, 500), 'moviePageChange');
+        } catch {
+            if (grid) grid.innerHTML = '<p style="color:var(--text-muted); grid-column:1/-1; text-align:center;">Failed to load.</p>';
+        }
+    }
+
+    function moviePageChange(page) {
+        movieFilterPage = page;
+        applyMovieFilters();
+        const grid = document.getElementById('movieFilterGrid');
+        if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function resetMovieFilters() {
+        movieFilterPage = 1;
+        movieFilterGenre = '';
+        movieFilterYear = '';
+        movieFilterSort = 'popularity.desc';
+        const g = document.getElementById('movieGenreFilter');
+        const y = document.getElementById('movieYearFilter');
+        const s = document.getElementById('movieSortFilter');
+        if (g) g.value = '';
+        if (y) y.value = '';
+        if (s) s.value = 'popularity.desc';
+        applyMovieFilters();
+    }
+
+    // ========== TV SERIES PAGE ==========
+    async function loadTVPage(el) {
+        currentPage = 'tv';
+        mode = 'tv';
+        setActiveNav(el || document.querySelector('[data-page="tv"]'));
+        document.getElementById('player-section').style.display = 'none';
+        const body = document.getElementById('contentBody');
+        body.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">Loading...</div>';
+
+        try {
+            const [popularRes, topRatedRes, airingRes, onAirRes] = await Promise.all([
+                fetch(`${TMDB}/tv/popular?api_key=${API_KEY}`),
+                fetch(`${TMDB}/tv/top_rated?api_key=${API_KEY}`),
+                fetch(`${TMDB}/tv/airing_today?api_key=${API_KEY}`),
+                fetch(`${TMDB}/tv/on_the_air?api_key=${API_KEY}`)
+            ]);
+            const [popular, topRated, airing, onAir] = await Promise.all([
+                popularRes.json(), topRatedRes.json(), airingRes.json(), onAirRes.json()
+            ]);
+
+            body.innerHTML = `
+                <div class="page-title-section">
+                    <h1 class="page-title"><i class="fas fa-tv"></i> TV Series</h1>
+                    <p class="page-subtitle">Discover popular, top rated, and currently airing shows</p>
+                </div>
+                ${createRowHTML('tvPopularRow', 'Popular TV Shows', 'fire', '#ff6b35')}
+                ${createRowHTML('tvTopRatedRow', 'Top Rated', 'trophy', '#f5c518')}
+                ${createRowHTML('tvAiringRow', 'Airing Today', 'broadcast-tower', '#22d3ee')}
+                ${createRowHTML('tvOnAirRow', 'Currently On Air', 'satellite-dish', '#a855f7')}
+                <div class="section-divider"></div>
+                <div class="section-header"><h2>Browse All TV Shows</h2></div>
+                <div class="filter-bar" id="tvFilterBar">
+                    <select class="filter-select" id="tvGenreFilter" onchange="tvFilterPage=1; applyTVFilters();">
+                        <option value="">All Genres</option>
+                        ${GENRES_TV.map(g => `<option value="${g.id}">${g.name}</option>`).join('')}
+                    </select>
+                    <select class="filter-select" id="tvYearFilter" onchange="tvFilterPage=1; applyTVFilters();">
+                        ${generateYearOptions()}
+                    </select>
+                    <select class="filter-select" id="tvSortFilter" onchange="tvFilterPage=1; applyTVFilters();">
+                        <option value="popularity.desc">Most Popular</option>
+                        <option value="vote_average.desc">Highest Rated</option>
+                        <option value="first_air_date.desc">Newest First</option>
+                        <option value="first_air_date.asc">Oldest First</option>
+                    </select>
+                    <button class="filter-reset" onclick="resetTVFilters()"><i class="fas fa-redo-alt"></i> Reset</button>
+                </div>
+                <div class="grid" id="tvFilterGrid">Loading...</div>
+                <div class="pagination" id="tvPagination"></div>
+            `;
+
+            renderScrollRow('tvPopularRow', popular.results, false, 'tv');
+            renderScrollRow('tvTopRatedRow', topRated.results, false, 'tv');
+            renderScrollRow('tvAiringRow', airing.results, false, 'tv');
+            renderScrollRow('tvOnAirRow', onAir.results, false, 'tv');
+
+            tvFilterPage = 1;
+            applyTVFilters();
+        } catch {
+            body.innerHTML = '<p style="padding:40px; color:var(--text-muted);">Failed to load TV shows. Please refresh.</p>';
+        }
+    }
+
+    async function applyTVFilters() {
+        const genreEl = document.getElementById('tvGenreFilter');
+        const yearEl = document.getElementById('tvYearFilter');
+        const sortEl = document.getElementById('tvSortFilter');
+        if (genreEl) tvFilterGenre = genreEl.value;
+        if (yearEl) tvFilterYear = yearEl.value;
+        if (sortEl) tvFilterSort = sortEl.value;
+
+        const grid = document.getElementById('tvFilterGrid');
+        if (grid) grid.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:30px; grid-column:1/-1;">Loading...</div>';
+
+        let url = `${TMDB}/discover/tv?api_key=${API_KEY}&page=${tvFilterPage}&sort_by=${tvFilterSort}`;
+        if (tvFilterGenre) url += `&with_genres=${tvFilterGenre}`;
+        if (tvFilterYear) url += `&first_air_date_year=${tvFilterYear}`;
+        if (tvFilterSort === 'vote_average.desc') url += '&vote_count.gte=200';
+
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            renderGrid('tvFilterGrid', data.results, 'tv');
+            renderPagination('tvPagination', data.page, Math.min(data.total_pages, 500), 'tvPageChange');
+        } catch {
+            if (grid) grid.innerHTML = '<p style="color:var(--text-muted); grid-column:1/-1; text-align:center;">Failed to load.</p>';
+        }
+    }
+
+    function tvPageChange(page) {
+        tvFilterPage = page;
+        applyTVFilters();
+        const grid = document.getElementById('tvFilterGrid');
+        if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function resetTVFilters() {
+        tvFilterPage = 1;
+        tvFilterGenre = '';
+        tvFilterYear = '';
+        tvFilterSort = 'popularity.desc';
+        const g = document.getElementById('tvGenreFilter');
+        const y = document.getElementById('tvYearFilter');
+        const s = document.getElementById('tvSortFilter');
+        if (g) g.value = '';
+        if (y) y.value = '';
+        if (s) s.value = 'popularity.desc';
+        applyTVFilters();
+    }
+
+    // ========== CATEGORY PAGES (Popular, Top Rated, Upcoming) ==========
+    async function loadCategory(category, el, page) {
+        currentPage = category;
+        categoryState.type = category;
+        categoryState.page = page || 1;
+        setActiveNav(el || document.querySelector(`[data-page="${category}"]`));
+        document.getElementById('player-section').style.display = 'none';
+
+        const body = document.getElementById('contentBody');
+        const labels = { popular: 'Popular Movies', top_rated: 'Top Rated Movies', upcoming: 'Upcoming Movies' };
+        const icons = { popular: 'fire', top_rated: 'trophy', upcoming: 'calendar-alt' };
+        const colors = { popular: '#ff6b35', top_rated: '#f5c518', upcoming: '#22d3ee' };
+
+        if (!document.getElementById('categoryGrid')) {
+            body.innerHTML = `
+                <div class="page-title-section">
+                    <h1 class="page-title"><i class="fas fa-${icons[category] || 'star'}"></i> ${labels[category] || category}</h1>
+                </div>
+                <div class="grid" id="categoryGrid">Loading...</div>
+                <div class="pagination" id="categoryPagination"></div>
+            `;
+        }
+
+        const grid = document.getElementById('categoryGrid');
+        if (grid) grid.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:30px; grid-column:1/-1;">Loading...</div>';
+
+        try {
+            const res = await fetch(`${TMDB}/movie/${category}?api_key=${API_KEY}&page=${categoryState.page}`);
+            const data = await res.json();
+            renderGrid('categoryGrid', data.results);
+            renderPagination('categoryPagination', data.page, Math.min(data.total_pages, 500), 'categoryPageChange');
+        } catch {
+            if (grid) grid.innerHTML = '<p style="color:var(--text-muted); grid-column:1/-1; text-align:center;">Failed to load.</p>';
+        }
+    }
+
+    function categoryPageChange(page) {
+        categoryState.page = page;
+        loadCategory(categoryState.type, null, page);
+        document.getElementById('mainArea').scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ========== GENRE PAGE ==========
+    async function loadGenre(genreId, genreName, page) {
+        currentPage = 'genre';
+        genreState.id = genreId;
+        genreState.name = genreName;
+        genreState.page = page || 1;
+        document.querySelectorAll('.genre-item').forEach(i => i.classList.remove('active'));
+        if (event && event.target) event.target.classList.add('active');
+        document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+        document.getElementById('player-section').style.display = 'none';
+
+        const body = document.getElementById('contentBody');
+        if (!document.getElementById('genreGrid') || !page) {
+            body.innerHTML = `
+                <div class="page-title-section">
+                    <h1 class="page-title"><i class="fas fa-masks-theater"></i> ${genreName} Movies</h1>
+                </div>
+                <div class="grid" id="genreGrid">Loading...</div>
+                <div class="pagination" id="genrePagination"></div>
+            `;
+        }
+
+        const grid = document.getElementById('genreGrid');
+        if (grid) grid.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:30px; grid-column:1/-1;">Loading...</div>';
+
+        try {
+            const res = await fetch(`${TMDB}/discover/movie?with_genres=${genreId}&sort_by=popularity.desc&api_key=${API_KEY}&page=${genreState.page}`);
+            const data = await res.json();
+            renderGrid('genreGrid', data.results);
+            renderPagination('genrePagination', data.page, Math.min(data.total_pages, 500), 'genrePageChange');
+        } catch {
+            if (grid) grid.innerHTML = '<p style="color:var(--text-muted); grid-column:1/-1; text-align:center;">Failed to load.</p>';
+        }
+    }
+
+    function genrePageChange(page) {
+        genreState.page = page;
+        loadGenre(genreState.id, genreState.name, page);
+        document.getElementById('mainArea').scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ========== RENDERING ==========
+    function renderScrollRow(containerId, items, showType = false, forceMode = null) {
+        const container = document.getElementById(containerId);
+        if (!container || !items) return;
+        container.innerHTML = items.filter(i => i.poster_path).map(i => {
+            const title = i.title || i.name || 'Unknown';
+            const type = forceMode || i.media_type || 'movie';
+            const rating = i.vote_average ? i.vote_average.toFixed(1) : '';
+            return `
+            <div class="scroll-card" data-id="${i.id}" data-title="${title.replace(/"/g, '&quot;')}" data-type="${type}" data-tmdb-id="${i.id}"
+                 onmouseenter="startTrailerHover(this, '${i.id}', '${type}')" onmouseleave="stopTrailerHover(this)">
+                ${rating ? `<div class="card-rating"><i class="fas fa-star"></i> ${rating}</div>` : ''}
+                ${showType && i.media_type ? `<div class="card-type">${i.media_type}</div>` : ''}
+                <img src="${IMG_BASE}w342${i.poster_path}" alt="${title.replace(/"/g, '&quot;')}" loading="lazy">
+                <div class="card-info">${title}</div>
+                <div class="trailer-overlay"></div>
+            </div>`;
+        }).join('');
+        container.querySelectorAll('.scroll-card').forEach(card => {
+            card.addEventListener('click', () => {
+                mode = card.dataset.type || 'movie';
+                play(card.dataset.id, card.dataset.title);
+            });
+        });
+    }
+
+    function renderGrid(gridId, items, forceMode = null) {
+        const grid = document.getElementById(gridId);
+        if (!grid) return;
+        if (!items || items.length === 0) {
+            grid.innerHTML = '<p style="color:var(--text-muted); grid-column: 1/-1; text-align:center; padding:40px;">No results found.</p>';
+            return;
+        }
+        const displayMode = forceMode || mode;
+        grid.innerHTML = items.filter(i => i.poster_path).map(i => {
+            const title = i.title || i.name || 'Unknown';
+            const rating = i.vote_average ? i.vote_average.toFixed(1) : '';
+            return `
+            <div class="card" data-id="${i.id}" data-title="${title.replace(/"/g, '&quot;')}" data-type="${displayMode}" data-tmdb-id="${i.id}"
+                 onmouseenter="startTrailerHover(this, '${i.id}', '${displayMode}')" onmouseleave="stopTrailerHover(this)">
+                ${rating ? `<div class="card-rating"><i class="fas fa-star"></i> ${rating}</div>` : ''}
+                <img src="${IMG_BASE}w342${i.poster_path}" alt="${title.replace(/"/g, '&quot;')}" loading="lazy">
+                <div class="card-info">${title}</div>
+                <div class="trailer-overlay"></div>
+            </div>`;
+        }).join('');
+        grid.querySelectorAll('.card').forEach(card => {
+            card.addEventListener('click', () => {
+                mode = card.dataset.type || 'movie';
+                play(card.dataset.id, card.dataset.title);
+            });
+        });
+    }
+
+    function renderPagination(containerId, current, totalPages, callbackName) {
+        const container = document.getElementById(containerId);
+        if (!container || totalPages <= 1) {
+            if (container) container.innerHTML = '';
+            return;
+        }
+        const maxPages = Math.min(totalPages, 500);
+        let pages = [];
+        pages.push(1);
+        let start = Math.max(2, current - 2);
+        let end = Math.min(maxPages - 1, current + 2);
+        if (start > 2) pages.push('...');
+        for (let i = start; i <= end; i++) pages.push(i);
+        if (end < maxPages - 1) pages.push('...');
+        if (maxPages > 1) pages.push(maxPages);
+
+        container.innerHTML = `
+            <button class="page-btn" ${current === 1 ? 'disabled' : ''} onclick="${callbackName}(${current - 1})"><i class="fas fa-chevron-left"></i></button>
+            ${pages.map(p => {
+                if (p === '...') return '<span class="page-ellipsis">...</span>';
+                return `<button class="page-btn ${p === current ? 'active' : ''}" onclick="${callbackName}(${p})">${p}</button>`;
+            }).join('')}
+            <button class="page-btn" ${current === maxPages ? 'disabled' : ''} onclick="${callbackName}(${current + 1})"><i class="fas fa-chevron-right"></i></button>
+            <span class="page-info">Page ${current} of ${maxPages.toLocaleString()}</span>
+        `;
+    }
+
+    // ========== SEARCH ==========
+    async function searchContent(query) {
+        currentPage = 'search';
+        document.getElementById('player-section').style.display = 'none';
+        const body = document.getElementById('contentBody');
+        body.innerHTML = `
+            <div class="page-title-section">
+                <h1 class="page-title"><i class="fas fa-search"></i> Results for "${query}"</h1>
+            </div>
+            <div class="grid" id="searchGrid">Loading...</div>
+        `;
+        try {
+            const [movieRes, tvRes] = await Promise.all([
+                fetch(`${TMDB}/search/movie?query=${encodeURIComponent(query)}&api_key=${API_KEY}`),
+                fetch(`${TMDB}/search/tv?query=${encodeURIComponent(query)}&api_key=${API_KEY}`)
+            ]);
+            const [movies, tv] = await Promise.all([movieRes.json(), tvRes.json()]);
+            const combined = [
+                ...(movies.results || []).map(m => ({...m, media_type: 'movie'})),
+                ...(tv.results || []).map(t => ({...t, media_type: 'tv'}))
+            ];
+            combined.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+            renderSearchGrid('searchGrid', combined);
+        } catch {
+            const grid = document.getElementById('searchGrid');
+            if (grid) grid.innerHTML = '<p style="color:var(--text-muted); grid-column:1/-1; text-align:center; padding:40px;">Search failed. Please try again.</p>';
+        }
+    }
+
+    function renderSearchGrid(gridId, items) {
+        const grid = document.getElementById(gridId);
+        if (!grid) return;
+        if (!items || items.length === 0) {
+            grid.innerHTML = '<p style="color:var(--text-muted); grid-column: 1/-1; text-align:center; padding:40px;">No results found.</p>';
+            return;
+        }
+        grid.innerHTML = items.filter(i => i.poster_path).map(i => {
+            const title = i.title || i.name || 'Unknown';
+            const rating = i.vote_average ? i.vote_average.toFixed(1) : '';
+            const type = i.media_type || 'movie';
+            return `
+            <div class="card" data-id="${i.id}" data-title="${title.replace(/"/g, '&quot;')}" data-type="${type}" data-tmdb-id="${i.id}"
+                 onmouseenter="startTrailerHover(this, '${i.id}', '${type}')" onmouseleave="stopTrailerHover(this)">
+                ${rating ? `<div class="card-rating"><i class="fas fa-star"></i> ${rating}</div>` : ''}
+                <div class="card-type">${type}</div>
+                <img src="${IMG_BASE}w342${i.poster_path}" alt="${title.replace(/"/g, '&quot;')}" loading="lazy">
+                <div class="card-info">${title}</div>
+                <div class="trailer-overlay"></div>
+            </div>`;
+        }).join('');
+        grid.querySelectorAll('.card').forEach(card => {
+            card.addEventListener('click', () => {
+                mode = card.dataset.type || 'movie';
+                play(card.dataset.id, card.dataset.title);
+            });
+        });
+    }
+
+    function handleSearch() {
+        const q = document.getElementById('search').value;
+        if (q.length > 2) {
+            searchContent(q);
+        } else if (q.length === 0) {
+            if (currentPage === 'movie') loadMoviesPage();
+            else if (currentPage === 'tv') loadTVPage();
+            else goHome();
+        }
+    }
+
+    // ========== TRAILER HOVER ==========
+    function startTrailerHover(card, id, type) {
+        const overlay = card.querySelector('.trailer-overlay');
+        overlay.innerHTML = '<div class="trailer-loading"><i class="fas fa-play-circle"></i><span>Loading trailer...</span></div>';
+        hoverTimer = setTimeout(async () => {
+            try {
+                let trailerKey = trailerCache[id];
+                if (!trailerKey) {
+                    const res = await fetch(`${TMDB}/${type}/${id}/videos?api_key=${API_KEY}`);
+                    const data = await res.json();
+                    const trailer = data.results.find(v => v.type === 'Trailer' && v.site === 'YouTube')
+                                 || data.results.find(v => v.site === 'YouTube');
+                    if (trailer) { trailerKey = trailer.key; trailerCache[id] = trailerKey; }
+                }
+                if (trailerKey && card.matches(':hover')) {
+                    overlay.innerHTML = `<iframe src="https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=0&controls=0&modestbranding=1&showinfo=0&rel=0&loop=1&playlist=${trailerKey}" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+                    overlay.classList.add('active');
+                }
+            } catch { overlay.innerHTML = ''; }
+        }, 800);
+    }
+
+    function stopTrailerHover(card) {
+        clearTimeout(hoverTimer);
+        const overlay = card.querySelector('.trailer-overlay');
+        if (overlay) { overlay.classList.remove('active'); overlay.innerHTML = ''; }
+    }
+
+    async function previewTrailer(id, type) {
+        try {
+            let trailerKey = trailerCache[id];
+            if (!trailerKey) {
+                const res = await fetch(`${TMDB}/${type}/${id}/videos?api_key=${API_KEY}`);
+                const data = await res.json();
+                const t = data.results.find(v => v.type === 'Trailer' && v.site === 'YouTube');
+                if (t) { trailerKey = t.key; trailerCache[id] = trailerKey; }
+            }
+            if (trailerKey) window.open(`https://youtube.com/watch?v=${trailerKey}`, '_blank');
+            else alert('No trailer found!');
+        } catch { alert('Could not load trailer.'); }
+    }
+
+    // ========== PLAYER ==========
+    function play(id, title) {
+        activeId = id;
+        activeTitle = title;
+        document.getElementById('player-section').style.display = 'block';
+        document.getElementById('pTitle').innerText = title;
+        document.querySelectorAll('.server-btn[data-server]').forEach(b => b.classList.toggle('active', b.dataset.server === server));
+        if (mode === 'tv') {
+            document.getElementById('tvControls').classList.add('visible');
+            fetchTvDetails(id);
+        } else {
+            document.getElementById('tvControls').classList.remove('visible');
+            tvDetails = null;
+        }
+        sync();
+        updateLibUI();
+        document.getElementById('mainArea').scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function closePlayer() {
+        var container = document.getElementById('mount');
+        if (container.classList.contains('css-fullscreen')) {
+            exitCSSFullscreen();
+        }
+        if (document.fullscreenElement || document.webkitFullscreenElement) {
+            if (document.exitFullscreen) document.exitFullscreen();
+            else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        }
+        document.getElementById('player-section').style.display = 'none';
+        document.getElementById('mount').innerHTML = '';
+    }
+
+    function toggleFullscreen() {
+        const container = document.getElementById('mount');
+
+        if (container.classList.contains('css-fullscreen')) {
+            exitCSSFullscreen();
+            return;
+        }
+
+        if (document.fullscreenElement || document.webkitFullscreenElement) {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            }
+            return;
+        }
+
+        try {
+            if (container.requestFullscreen) {
+                var p = container.requestFullscreen();
+                if (p && p.catch) p.catch(function() { enterCSSFullscreen(); });
+            } else if (container.webkitRequestFullscreen) {
+                container.webkitRequestFullscreen();
+            } else {
+                enterCSSFullscreen();
+            }
+        } catch(e) {
+            enterCSSFullscreen();
+        }
+    }
+
+    function enterCSSFullscreen() {
+        var container = document.getElementById('mount');
+        container.classList.add('css-fullscreen');
+        document.body.classList.add('fullscreen-active');
+        var closeBtn = document.createElement('button');
+        closeBtn.className = 'css-fullscreen-close';
+        closeBtn.id = 'cssFullscreenClose';
+        closeBtn.innerHTML = '<i class="fas fa-compress"></i>';
+        closeBtn.onclick = exitCSSFullscreen;
+        document.body.appendChild(closeBtn);
+        updateFullscreenBtn();
+    }
+
+    function exitCSSFullscreen() {
+        var container = document.getElementById('mount');
+        container.classList.remove('css-fullscreen');
+        document.body.classList.remove('fullscreen-active');
+        var closeBtn = document.getElementById('cssFullscreenClose');
+        if (closeBtn) closeBtn.remove();
+        updateFullscreenBtn();
+    }
+
+    document.addEventListener('fullscreenchange', updateFullscreenBtn);
+    document.addEventListener('webkitfullscreenchange', updateFullscreenBtn);
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            var container = document.getElementById('mount');
+            if (container && container.classList.contains('css-fullscreen')) {
+                exitCSSFullscreen();
+            }
+        }
+    });
+
+    function updateFullscreenBtn() {
+        var btn = document.querySelector('.fullscreen-btn');
+        if (!btn) return;
+        var container = document.getElementById('mount');
+        var isFs = document.fullscreenElement || document.webkitFullscreenElement || (container && container.classList.contains('css-fullscreen'));
+        btn.innerHTML = isFs ? '<i class="fas fa-compress"></i> Exit Fullscreen' : '<i class="fas fa-expand"></i> Fullscreen';
+    }
+
+    async function fetchTvDetails(id) {
+        try {
+            const res = await fetch(`${TMDB}/tv/${id}?api_key=${API_KEY}`);
+            tvDetails = await res.json();
+            const select = document.getElementById('seasonSelect');
+            select.innerHTML = tvDetails.seasons
+                .filter(s => s.season_number > 0)
+                .map(s => `<option value="${s.season_number}">Season ${s.season_number} (${s.episode_count} eps)</option>`)
+                .join('');
+            currentSeason = tvDetails.seasons.find(s => s.season_number > 0)?.season_number || 1;
+            select.value = currentSeason;
+            await loadEpisodes(id, currentSeason);
+        } catch {
+            document.getElementById('seasonSelect').innerHTML = '<option>Season 1</option>';
+            renderEpisodeFallback();
+        }
+    }
+
+    async function onSeasonChange() {
+        currentSeason = parseInt(document.getElementById('seasonSelect').value);
+        currentEpisode = 1;
+        await loadEpisodes(activeId, currentSeason);
+        sync();
+    }
+
+    async function loadEpisodes(showId, seasonNum) {
+        try {
+            const res = await fetch(`${TMDB}/tv/${showId}/season/${seasonNum}?api_key=${API_KEY}`);
+            const data = await res.json();
+            const grid = document.getElementById('episodeGrid');
+            grid.innerHTML = data.episodes.map(ep =>
+                `<button class="ep-btn ${ep.episode_number === currentEpisode ? 'active' : ''}"
+                         onclick="selectEpisode(${ep.episode_number}, this)"
+                         title="${ep.name || 'Episode ' + ep.episode_number}">
+                    ${ep.episode_number}
+                </button>`
+            ).join('');
+        } catch { renderEpisodeFallback(); }
+    }
+
+    function renderEpisodeFallback() {
+        const grid = document.getElementById('episodeGrid');
+        grid.innerHTML = Array.from({length: 20}, (_, i) =>
+            `<button class="ep-btn ${i + 1 === currentEpisode ? 'active' : ''}"
+                     onclick="selectEpisode(${i + 1}, this)">${i + 1}</button>`
+        ).join('');
+    }
+
+    function selectEpisode(epNum, btn) {
+        currentEpisode = epNum;
+        document.querySelectorAll('.ep-btn').forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+        sync();
+    }
+
+    function toggleServer(s, btn) {
+        server = s;
+        document.querySelectorAll('.server-btn[data-server]').forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+        sync();
+    }
+
+    function sync() {
+        const s = currentSeason, e = currentEpisode;
+        let url;
+        switch (server) {
+            case 'vidsrc': url = mode === 'tv' ? `https://vidsrc.cc/v2/embed/tv/${activeId}/${s}/${e}` : `https://vidsrc.cc/v2/embed/movie/${activeId}`; break;
+            case 'embed': url = mode === 'tv' ? `https://embed.su/embed/tv/${activeId}/${s}/${e}` : `https://embed.su/embed/movie/${activeId}`; break;
+            case 'vidsrc2': url = mode === 'tv' ? `https://vidsrc.xyz/embed/tv/${activeId}/${s}/${e}` : `https://vidsrc.xyz/embed/movie/${activeId}`; break;
+            case 'multiembed': url = mode === 'tv' ? `https://multiembed.mov/?video_id=${activeId}&tmdb=1&s=${s}&e=${e}` : `https://multiembed.mov/?video_id=${activeId}&tmdb=1`; break;
+            case 'autoembed': url = mode === 'tv' ? `https://player.autoembed.cc/embed/tv/${activeId}/${s}/${e}` : `https://player.autoembed.cc/embed/movie/${activeId}`; break;
+            default: url = mode === 'tv' ? `https://vidsrc.cc/v2/embed/tv/${activeId}/${s}/${e}` : `https://vidsrc.cc/v2/embed/movie/${activeId}`;
+        }
+        document.getElementById('mount').innerHTML = `<iframe src="${url}" allowfullscreen webkitallowfullscreen mozallowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture" style="width:100%;height:100%;border:none;"></iframe>`;
+    }
+
+    async function openTrailer() {
+        try {
+            let trailerKey = trailerCache[activeId];
+            if (!trailerKey) {
+                const res = await fetch(`${TMDB}/${mode}/${activeId}/videos?api_key=${API_KEY}`);
+                const data = await res.json();
+                const t = data.results.find(v => v.type === 'Trailer' && v.site === 'YouTube');
+                if (t) { trailerKey = t.key; trailerCache[activeId] = trailerKey; }
+            }
+            if (trailerKey) window.open(`https://youtube.com/watch?v=${trailerKey}`, '_blank');
+            else alert('No trailer found!');
+        } catch { alert('Could not fetch trailer.'); }
+    }
+
+    // ========== LIBRARY ==========
+    function toggleSave() {
+        const idx = saved.findIndex(x => x.id == activeId);
+        if (idx > -1) saved.splice(idx, 1);
+        else saved.push({ id: activeId, title: activeTitle, type: mode });
+        localStorage.setItem('philos_list', JSON.stringify(saved));
+        updateLibUI();
+    }
+
+    function updateLibUI() {
+        const exists = saved.some(x => x.id == activeId);
+        const saveBtn = document.getElementById('saveBtn');
+        if (saveBtn) {
+            saveBtn.innerHTML = exists ? '<i class="fas fa-check"></i> Saved' : '<i class="fas fa-plus"></i> Save';
+            saveBtn.classList.toggle('saved', exists);
+        }
+        const badge = document.getElementById('libBadge');
+        if (badge) {
+            badge.style.display = saved.length ? 'inline' : 'none';
+            badge.textContent = saved.length;
+        }
+        const stats = document.getElementById('user-stats');
+        if (stats) stats.innerText = saved.length ? `Library: ${saved.length}` : '';
+    }
+
+    function showSaved(el) {
+        currentPage = 'library';
+        setActiveNav(el || document.querySelector('[data-page="library"]'));
+        document.getElementById('player-section').style.display = 'none';
+
+        const body = document.getElementById('contentBody');
+        body.innerHTML = `
+            <div class="page-title-section">
+                <h1 class="page-title"><i class="fas fa-bookmark"></i> My Library</h1>
+                <p class="page-subtitle">${saved.length} saved item${saved.length !== 1 ? 's' : ''}</p>
+            </div>
+            <div class="grid" id="libraryGrid">Loading...</div>
+        `;
+
+        if (!saved.length) {
+            document.getElementById('libraryGrid').innerHTML = '<p style="color:var(--text-muted); grid-column: 1/-1; text-align:center; padding:40px;">Your library is empty. Save movies and shows to see them here.</p>';
+            return;
+        }
+
+        const grid = document.getElementById('libraryGrid');
+        grid.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:20px; grid-column:1/-1;">Loading library...</div>';
+
+        Promise.all(saved.map(async item => {
+            try {
+                const res = await fetch(`${TMDB}/${item.type}/${item.id}?api_key=${API_KEY}`);
+                return { ...(await res.json()), _type: item.type, _title: item.title };
+            } catch { return null; }
+        })).then(results => {
+            const valid = results.filter(Boolean);
+            grid.innerHTML = valid.map(i => {
+                const title = i._title || i.title || i.name || 'Unknown';
+                const rating = i.vote_average ? i.vote_average.toFixed(1) : '';
+                return `
+                <div class="card" data-id="${i.id}" data-title="${title.replace(/"/g, '&quot;')}" data-type="${i._type}" data-tmdb-id="${i.id}"
+                     onmouseenter="startTrailerHover(this, '${i.id}', '${i._type}')" onmouseleave="stopTrailerHover(this)">
+                    ${rating ? `<div class="card-rating"><i class="fas fa-star"></i> ${rating}</div>` : ''}
+                    <div class="card-type">${i._type}</div>
+                    <img src="${IMG_BASE}w342${i.poster_path}" alt="${title.replace(/"/g, '&quot;')}" loading="lazy">
+                    <div class="card-info">${title}</div>
+                    <div class="trailer-overlay"></div>
+                </div>`;
+            }).join('');
+            grid.querySelectorAll('.card').forEach(card => {
+                card.addEventListener('click', () => {
+                    mode = card.dataset.type || 'movie';
+                    play(card.dataset.id, card.dataset.title);
+                });
+            });
+        });
+    }
+
+    // ========== UTILITIES ==========
+    function scrollToTop() {
+        document.getElementById('mainArea').scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    document.getElementById('mainArea').addEventListener('scroll', function() {
+        const btn = document.getElementById('backToTop');
+        btn.classList.toggle('visible', this.scrollTop > 400);
+    });
+
+    // ========== INIT ==========
+    initGenres();
+    goHome();
+    updateLibUI();
+</script>
+</body>
+</html>
