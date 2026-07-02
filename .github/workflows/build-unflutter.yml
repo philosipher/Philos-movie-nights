@@ -1,0 +1,38 @@
+name: Build Flutter AOT Analyzer
+
+on:
+  push:
+    branches:
+      - tooling/unflutter-build
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: Build unflutter
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 https://github.com/zboralski/unflutter.git
+          cd unflutter
+          go build -trimpath -ldflags='-s -w' -o ../unflutter-linux ./cmd/unflutter
+          cd ..
+          chmod +x unflutter-linux
+          ./unflutter-linux --help || true
+
+      - name: Upload analyzer
+        uses: actions/upload-artifact@v4
+        with:
+          name: unflutter-linux
+          path: unflutter-linux
+          if-no-files-found: error
+          retention-days: 1
