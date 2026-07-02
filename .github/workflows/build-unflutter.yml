@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - tooling/unflutter-build
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
