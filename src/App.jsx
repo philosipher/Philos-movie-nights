@@ -447,7 +447,12 @@ function MovieRoom({ session, onLeave }) {
     addLocalTracks(pc);
 
     pc.onicecandidate = (event) => {
-      if (event.candidate) socketRef.current?.emit("signal", { target: peerId, type: "candidate", candidate: event.candidate });
+      if (!event.candidate) return;
+      if (socketRef.current) {
+        socketRef.current.emit("signal", { target: peerId, type: "candidate", candidate: event.candidate });
+      } else if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ t: "signal", target: peerId, from: localIdRef.current, sigType: "candidate", candidate: event.candidate }));
+      }
     };
     pc.ontrack = (event) => {
       const stream = event.streams[0];
@@ -483,50 +488,37 @@ function MovieRoom({ session, onLeave }) {
     try {
       const offer = await peer.pc.createOffer();
       await peer.pc.setLocalDescription(offer);
-      socketRef.current?.emit("signal", {
-        target: peerId,
-        type: "offer",
-        sdp: peer.pc.localDescription,
-        streams: streamMeta(),
-      });
+      if (socketRef.current) {
+        socketRef.current.emit("signal", {
+          target: peerId, type: "offer",
+          sdp: peer.pc.localDescription, streams: streamMeta(),
+        });
+      } else if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          t: "signal", target: peerId, from: localIdRef.current,
+          sigType: "offer", sdp: peer.pc.localDescription, streams: streamMeta(),
+        }));
+      }
     } catch (error) {
       console.warn("Could not negotiate peer connection", error);
     }
   }, [addLocalTracks, createPeer, streamMeta]);
 
   const renegotiateAll = useCallback(() => {
-    if (socketRef.current) {
-      peersRef.current.forEach((_peer, peerId) => makeOffer(peerId));
-    } else if (peerRef.current) {
-      dataConnsRef.current.forEach((_conn, targetPeerId) => {
-        if (screenStreamRef.current) {
-          const call = peerRef.current.call(targetPeerId, screenStreamRef.current, { metadata: { type: "screen", isHost: session?.isHost !== false } });
-          call?.on("stream", (remoteStream) => {
-            setRemoteMedia((current) => ({
-              ...current,
-              [targetPeerId]: { ...current[targetPeerId], screenStream: remoteStream },
-            }));
-          });
-        }
-        if (cameraStreamRef.current) {
-          const call = peerRef.current.call(targetPeerId, cameraStreamRef.current, { metadata: { type: "camera", isHost: session?.isHost !== false } });
-          call?.on("stream", (remoteStream) => {
-            setRemoteMedia((current) => ({
-              ...current,
-              [targetPeerId]: { ...current[targetPeerId], cameraStream: remoteStream },
-            }));
-          });
-        }
-      });
-    }
-  }, [makeOffer, session?.isHost]);
+    peersRef.current.forEach((_peer, peerId) => makeOffer(peerId));
+  }, [makeOffer]);
 
   const peerRef = useRef(null);
   const dataConnsRef = useRef(new Map());
   const channelRef = useRef(null);
   const wsRef = useRef(null);
+  const localIdRef = useRef(null);
+  const heartbeatRef = useRef(null);
 
   const broadcastServerless = useCallback((type, payload) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ t: "data", dtype: type, payload, from: localIdRef.current }));
+    }
     dataConnsRef.current.forEach((conn) => {
       if (conn.open) conn.send({ type, payload });
     });
@@ -682,167 +674,134 @@ function MovieRoom({ session, onLeave }) {
         }
       });
     } else {
-      // -------------------------------------------------------------
-      // STANDALONE SERVERLESS PEERJS MODE (Cross-Device P2P WebRTC)
-      // -------------------------------------------------------------
+      // -----------------------------------------------------------------
+      // SERVERLESS MODE — Pure WebRTC + PieSocket WSS Signaling
+      // No PeerJS broker (0.peerjs.com) dependency. ALL signaling goes
+      // through PieSocket WSS on port 443, which is standard HTTPS and
+      // is NEVER blocked by mobile carriers (4G LTE / 5G CGNAT).
+      // Media flows through native RTCPeerConnection with TURN relay.
+      // -----------------------------------------------------------------
       const cleanCode = cleanRoomCode(session.roomCode);
-      const hostPeerId = `philos-host-${cleanCode}`;
       const isHost = session.isHost !== false;
+      const myId = isHost
+        ? `philos-host-${cleanCode}`
+        : `philos-guest-${cleanCode}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+      localIdRef.current = myId;
 
-      const initPeer = () => {
-        const myPeerId = isHost ? hostPeerId : `philos-guest-${cleanCode}-${Math.random().toString(36).substring(2, 7)}`;
-        const peer = new Peer(myPeerId, {
-          host: "0.peerjs.com",
-          port: 443,
-          path: "/",
-          secure: true,
-          config: {
-            iceServers: GLOBAL_ICE_SERVERS,
-          },
-        });
-        peerRef.current = peer;
+      const selfUser = { id: myId, username: session.username };
+      setConnected(true);
+      setParticipants([selfUser]);
+      setMessages([{
+        id: "welcome",
+        system: true,
+        text: isHost
+          ? `Welcome to ${session.roomCode}. Share your screen when everyone's settled in.`
+          : `Joined room ${session.roomCode}. Waiting for the host to present.`,
+      }]);
 
-        peer.on("open", (id) => {
-          setConnected(true);
-          const selfUser = { id, username: session.username };
-          setParticipants([selfUser]);
-          setMessages([{
-            id: "welcome",
-            system: true,
-            text: isHost
-              ? `Welcome to ${session.roomCode}. Share your screen when everyone’s settled in.`
-              : `Joined room ${session.roomCode}. Waiting for the host to present.`,
-          }]);
+      // PieSocket WSS — the ONLY signaling + data messaging channel
+      const wsUrl = `wss://free.piesocket.com/v3/philos_${cleanCode}?api_key=VC44WVtGJvxOtBMLQwipBWKmI88FUAVaBc6mfCrQ&notify_self=0`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-          if (!isHost) {
-            connectToPeer(hostPeerId);
-          }
+      const knownPeers = new Set();
 
-          // Universal WSS WebSocket Signaling Relay for Cross-Network (4G LTE / 5G / Wi-Fi) Discovery
-          try {
-            const wsUrl = `wss://free.piesocket.com/v3/philos_${cleanCode}?api_key=VC44WVtGJvxOtBMLQwipBWKmI88FUAVaBc6mfCrQ&notify_self=1`;
-            const ws = new WebSocket(wsUrl);
-            wsRef.current = ws;
-
-            ws.onopen = () => {
-              ws.send(JSON.stringify({ type: "presence", user: { id, username: session.username, isHost } }));
-            };
-
-            ws.onmessage = (event) => {
-              try {
-                const data = JSON.parse(event.data);
-                if (data.type === "presence" && data.user && data.user.id !== id) {
-                  const remoteUser = data.user;
-                  setParticipants((current) => current.some((u) => u.id === remoteUser.id) ? current : [...current, remoteUser]);
-                  if (isHost) {
-                    ws.send(JSON.stringify({ type: "presence-ack", user: { id, username: session.username, isHost: true } }));
-                    connectToPeer(remoteUser.id);
-                  } else if (remoteUser.isHost) {
-                    connectToPeer(remoteUser.id);
-                  }
-                } else if (data.type === "presence-ack" && data.user && data.user.id !== id) {
-                  const remoteUser = data.user;
-                  setParticipants((current) => current.some((u) => u.id === remoteUser.id) ? current : [...current, remoteUser]);
-                  connectToPeer(remoteUser.id);
-                }
-              } catch {
-                // non-json socket messages ignored
-              }
-            };
-          } catch {
-            // silent WSS fallback
-          }
-        });
-
-        peer.on("connection", (dataConn) => {
-          setupDataConnection(dataConn);
-          if (screenStreamRef.current) {
-            const call = peer.call(dataConn.peer, screenStreamRef.current, { metadata: { type: "screen", isHost } });
-            call?.on("stream", (remoteStream) => {
-              setRemoteMedia((current) => ({
-                ...current,
-                [dataConn.peer]: { ...current[dataConn.peer], screenStream: remoteStream },
-              }));
-            });
-          }
-          if (cameraStreamRef.current) {
-            const call = peer.call(dataConn.peer, cameraStreamRef.current, { metadata: { type: "camera", isHost } });
-            call?.on("stream", (remoteStream) => {
-              setRemoteMedia((current) => ({
-                ...current,
-                [dataConn.peer]: { ...current[dataConn.peer], cameraStream: remoteStream },
-              }));
-            });
-          }
-        });
-
-        peer.on("call", (mediaCall) => {
-          const localStreams = [screenStreamRef.current, cameraStreamRef.current].filter(Boolean);
-          if (localStreams.length > 0) {
-            mediaCall.answer(localStreams[0]);
-          } else {
-            mediaCall.answer();
-          }
-          mediaCall.on("stream", (remoteStream) => {
-            const isScreenCall = mediaCall.metadata?.type === "screen";
-            const fromHost = mediaCall.metadata?.isHost || mediaCall.peer === hostPeerId;
-
-            setRemoteMedia((current) => {
-              const peerMedia = current[mediaCall.peer] || {};
-              if (isScreenCall && fromHost) {
-                return {
-                  ...current,
-                  [mediaCall.peer]: { ...peerMedia, screenStream: remoteStream },
-                  [hostPeerId]: { ...current[hostPeerId], screenStream: remoteStream },
-                };
-              } else {
-                return {
-                  ...current,
-                  [mediaCall.peer]: { ...peerMedia, cameraStream: remoteStream },
-                };
-              }
-            });
-          });
-        });
-
-        peer.on("error", (err) => {
-          if (!isHost && err.type === "peer-unavailable") {
-            showToast("Host is not online in this room yet.", "error");
-          } else {
-            console.warn("PeerJS note:", err);
-            setConnected(true);
-          }
-        });
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ t: "presence", user: selfUser }));
       };
 
-      initPeer();
-    }
+      ws.onmessage = (evt) => {
+        let data;
+        try { data = JSON.parse(evt.data); } catch { return; }
 
-    // Auto-retry connection loop for Guest over 4G LTE cellular data
-    let retryTimer = null;
-    if (session && !session.isHost) {
-      const cleanCode = cleanRoomCode(session.roomCode);
-      const hostPeerId = `philos-host-${cleanCode}`;
-      retryTimer = setInterval(() => {
-        if (peerRef.current && !peerRef.current.destroyed && !dataConnsRef.current.has(hostPeerId)) {
-          connectToPeer(hostPeerId);
+        // --- Presence Discovery ---
+        if (data.t === "presence" && data.user && data.user.id !== myId) {
+          const remote = data.user;
+          setParticipants((cur) => cur.some((u) => u.id === remote.id) ? cur : [...cur, remote]);
+          // Acknowledge so the remote side discovers us too
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ t: "presence-ack", user: selfUser }));
+          }
+          if (!knownPeers.has(remote.id)) {
+            knownPeers.add(remote.id);
+            setMessages((cur) => [...cur, { id: `join-${remote.id}`, system: true, text: `${remote.username} grabbed a seat.` }]);
+            showToast(`${remote.username} joined the room`, "success");
+            // Polite negotiation: lexically higher ID creates the offer to prevent ofer glare
+            if (myId > remote.id) makeOffer(remote.id);
+          }
         }
-      }, 2500);
-    }
 
-    // Host Stream Keep-Alive Ping for 4G LTE viewers
-    let pingTimer = null;
-    if (session && session.isHost) {
-      pingTimer = setInterval(() => {
-        if (screenStreamRef.current || cameraStreamRef.current) {
-          renegotiateAll();
+        if (data.t === "presence-ack" && data.user && data.user.id !== myId) {
+          const remote = data.user;
+          setParticipants((cur) => cur.some((u) => u.id === remote.id) ? cur : [...cur, remote]);
+          if (!knownPeers.has(remote.id)) {
+            knownPeers.add(remote.id);
+            setMessages((cur) => [...cur, { id: `join-${remote.id}`, system: true, text: `${remote.username} grabbed a seat.` }]);
+            showToast(`${remote.username} joined the room`, "success");
+            if (myId > remote.id) makeOffer(remote.id);
+          }
         }
-      }, 4000);
+
+        // --- WebRTC Signaling (SDP offer / answer / ICE candidate) ---
+        if (data.t === "signal" && data.target === myId && data.from) {
+          (async () => {
+            const peer = createPeer(data.from);
+            if (data.streams && Object.keys(data.streams).length) {
+              peer.remoteStreamTypes = data.streams;
+            }
+            try {
+              if (data.sigType === "offer") {
+                await peer.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                addLocalTracks(peer.pc);
+                const answer = await peer.pc.createAnswer();
+                await peer.pc.setLocalDescription(answer);
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({
+                    t: "signal", target: data.from, from: myId, sigType: "answer",
+                    sdp: peer.pc.localDescription, streams: streamMeta(),
+                  }));
+                }
+              } else if (data.sigType === "answer") {
+                await peer.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+              } else if (data.sigType === "candidate" && data.candidate) {
+                await peer.pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+              }
+            } catch (err) {
+              console.warn("WebRTC signal error:", err);
+            }
+          })();
+        }
+
+        // --- Data Messages (chat, reactions, queue, countdown) ---
+        if (data.t === "data" && data.from !== myId) {
+          if (data.dtype === "chat-message") {
+            setMessages((cur) => [...cur, data.payload]);
+          } else if (data.dtype === "reaction") {
+            const reaction = data.payload;
+            setReactions((cur) => [...cur, reaction]);
+            setTimeout(() => setReactions((cur) => cur.filter((r) => r.id !== reaction.id)), 2600);
+          } else if (data.dtype === "room-state") {
+            setQueue(data.payload.queue || []);
+            setNowPlaying(data.payload.nowPlaying || null);
+          } else if (data.dtype === "countdown-start") {
+            runCountdown(data.payload);
+          }
+        }
+      };
+
+      ws.onclose = () => setConnected(false);
+      ws.onerror = () => console.warn("WSS connection error");
+
+      // Re-announce presence periodically so late joiners discover existing peers
+      heartbeatRef.current = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ t: "presence", user: selfUser }));
+        }
+      }, 8000);
     }
 
     return () => {
-      if (retryTimer) clearInterval(retryTimer);
-      if (pingTimer) clearInterval(pingTimer);
+      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
       clearTimeout(toastTimer.current);
       countdownTimersRef.current.forEach((timer) => {
         clearTimeout(timer);
@@ -850,14 +809,13 @@ function MovieRoom({ session, onLeave }) {
       });
       socketRef.current?.disconnect();
       peerRef.current?.destroy();
-      channelRef.current?.close();
       wsRef.current?.close();
       peersRef.current.forEach(({ pc }) => pc.close());
       peersRef.current.clear();
       cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
       screenStreamRef.current?.getTracks().forEach((track) => track.stop());
     };
-  }, [addLocalTracks, connectToPeer, createPeer, makeOffer, onLeave, runCountdown, session, setupDataConnection, showToast, streamMeta]);
+  }, [addLocalTracks, createPeer, makeOffer, onLeave, runCountdown, session, showToast, streamMeta]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -981,7 +939,7 @@ function MovieRoom({ session, onLeave }) {
     } else {
       const payload = {
         id: `msg-${Date.now()}`,
-        userId: peerRef.current?.id || "self",
+        userId: localIdRef.current || peerRef.current?.id || "self",
         username: session.username,
         text,
         sentAt: new Date().toISOString(),
@@ -1016,8 +974,8 @@ function MovieRoom({ session, onLeave }) {
         id: `item-${Date.now()}`,
         title,
         addedBy: session.username,
-        addedById: peerRef.current?.id || "self",
-        voters: [peerRef.current?.id || "self"],
+        addedById: localIdRef.current || peerRef.current?.id || "self",
+        voters: [localIdRef.current || peerRef.current?.id || "self"],
         votes: 1,
       };
       const nextQueue = [...queue, newItem];
@@ -1065,7 +1023,7 @@ function MovieRoom({ session, onLeave }) {
     }
   };
 
-  const myId = peerRef.current?.id || socketRef.current?.id;
+  const myId = localIdRef.current || peerRef.current?.id || socketRef.current?.id;
   const self = participants.find((user) => user.id === myId) || { id: myId || "self", username: session.username };
   const others = participants.filter((user) => user.id !== self.id && user.id !== myId);
   const cleanCode = cleanRoomCode(session.roomCode);
