@@ -255,12 +255,36 @@ function Landing({ onEnter }) {
   );
 }
 
-function VideoSurface({ stream, muted = false, className = "" }) {
+function VideoSurface({ stream, muted = false, className = "", style = {} }) {
   const ref = useRef(null);
   useEffect(() => {
-    if (ref.current && ref.current.srcObject !== stream) ref.current.srcObject = stream || null;
+    const el = ref.current;
+    if (el) {
+      if (el.srcObject !== stream) {
+        el.srcObject = stream || null;
+      }
+      if (stream) {
+        const playPromise = el.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((error) => {
+            console.warn("Video play notice:", error);
+          });
+        }
+      }
+    }
   }, [stream]);
-  return <video ref={ref} className={className} autoPlay playsInline muted={muted} />;
+
+  return (
+    <video
+      ref={ref}
+      className={className}
+      style={style}
+      autoPlay
+      playsInline
+      webkit-playsinline="true"
+      muted={muted}
+    />
+  );
 }
 
 function ParticipantTile({ participant, stream, self = false, micOn = false }) {
@@ -533,17 +557,17 @@ function MovieRoom({ session, onLeave }) {
 
   const connectToPeer = useCallback((targetPeerId) => {
     if (!peerRef.current || targetPeerId === peerRef.current.id || dataConnsRef.current.has(targetPeerId)) return;
-    const conn = peerRef.current.connect(targetPeerId);
+    const conn = peerRef.current.connect(targetPeerId, { config: { iceServers: GLOBAL_ICE_SERVERS } });
     setupDataConnection(conn);
 
     const activeStreams = [cameraStreamRef.current, screenStreamRef.current].filter(Boolean);
     if (activeStreams.length) {
       activeStreams.forEach((stream) => {
-        const call = peerRef.current.call(targetPeerId, stream);
+        const call = peerRef.current.call(targetPeerId, stream, { config: { iceServers: GLOBAL_ICE_SERVERS } });
         call?.on("stream", (remoteStream) => {
           setRemoteMedia((current) => ({
             ...current,
-            [targetPeerId]: { ...current[targetPeerId], cameraStream: remoteStream },
+            [targetPeerId]: { ...current[targetPeerId], cameraStream: remoteStream, screenStream: remoteStream },
           }));
         });
       });
