@@ -42,6 +42,25 @@ import {
 const REACTIONS = ["🍿", "😂", "😱", "❤️", "👏"];
 const AVATAR_COLORS = ["#ef6d5b", "#7c8ff5", "#56b49b", "#d991d0", "#e6a84b", "#8d72db"];
 
+function safeGetStorage(storageType, key, fallback = "") {
+  try {
+    const store = storageType === "session" ? sessionStorage : localStorage;
+    return store.getItem(key) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function safeSetStorage(storageType, key, value) {
+  try {
+    const store = storageType === "session" ? sessionStorage : localStorage;
+    if (value) store.setItem(key, value);
+    else store.removeItem(key);
+  } catch {
+    // Storage blocked in browser strict privacy modes
+  }
+}
+
 function makeRoomCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const bits = Array.from({ length: 5 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
@@ -90,9 +109,9 @@ function Avatar({ name, id, size = "md", online = false }) {
 
 function Landing({ onEnter }) {
   const queryRoom = new URLSearchParams(window.location.search).get("room") || "";
-  const [username, setUsername] = useState(() => sessionStorage.getItem("philos-movie-nights-name") || "");
+  const [username, setUsername] = useState(() => safeGetStorage("session", "philos-movie-nights-name", ""));
   const [roomCode, setRoomCode] = useState(() => cleanRoomCode(queryRoom));
-  const [serverUrl, setServerUrl] = useState(() => localStorage.getItem("philos-server-url") || import.meta.env.VITE_SOCKET_URL || "");
+  const [serverUrl, setServerUrl] = useState(() => safeGetStorage("local", "philos-server-url", import.meta.env.VITE_SOCKET_URL || ""));
   const [showServerInput, setShowServerInput] = useState(false);
   const [mode, setMode] = useState(queryRoom ? "join" : "create");
   const [error, setError] = useState("");
@@ -109,12 +128,8 @@ function Landing({ onEnter }) {
       setError("Enter the room code from your invite.");
       return;
     }
-    sessionStorage.setItem("philos-movie-nights-name", name);
-    if (serverUrl) {
-      localStorage.setItem("philos-server-url", serverUrl.trim());
-    } else {
-      localStorage.removeItem("philos-server-url");
-    }
+    safeSetStorage("session", "philos-movie-nights-name", name);
+    safeSetStorage("local", "philos-server-url", serverUrl.trim());
     onEnter({ username: name, roomCode: code, serverUrl: serverUrl.trim() });
   };
 
@@ -1025,7 +1040,34 @@ function MovieRoom({ session, onLeave }) {
   );
 }
 
-export default function App() {
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error) {
+    console.warn("App catch boundary:", error);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <main className="landing" style={{ padding: "60px 20px", textAlign: "center" }}>
+          <h2>Philos Movie Nights</h2>
+          <p>We encountered an issue loading this room session.</p>
+          <button className="primary-action" style={{ maxWidth: "260px", margin: "20px auto" }} onClick={() => { safeSetStorage("local", "philos-server-url", ""); window.location.reload(); }}>
+            Reset & Reload
+          </button>
+        </main>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function MainApp() {
   const [session, setSession] = useState(null);
   const enterRoom = useCallback((nextSession) => {
     const url = new URL(window.location.href);
@@ -1040,4 +1082,12 @@ export default function App() {
     setSession(null);
   }, []);
   return session ? <MovieRoom session={session} onLeave={leaveRoom} /> : <Landing onEnter={enterRoom} />;
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <MainApp />
+    </ErrorBoundary>
+  );
 }
