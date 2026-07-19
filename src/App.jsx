@@ -524,6 +524,7 @@ function MovieRoom({ session, onLeave }) {
   const peerRef = useRef(null);
   const dataConnsRef = useRef(new Map());
   const channelRef = useRef(null);
+  const wsRef = useRef(null);
 
   const broadcastServerless = useCallback((type, payload) => {
     dataConnsRef.current.forEach((conn) => {
@@ -713,6 +714,41 @@ function MovieRoom({ session, onLeave }) {
           if (!isHost) {
             connectToPeer(hostPeerId);
           }
+
+          // Universal WSS WebSocket Signaling Relay for Cross-Network (4G LTE / 5G / Wi-Fi) Discovery
+          try {
+            const wsUrl = `wss://free.piesocket.com/v3/philos_${cleanCode}?api_key=VC44WVtGJvxOtBMLQwipBWKmI88FUAVaBc6mfCrQ&notify_self=1`;
+            const ws = new WebSocket(wsUrl);
+            wsRef.current = ws;
+
+            ws.onopen = () => {
+              ws.send(JSON.stringify({ type: "presence", user: { id, username: session.username, isHost } }));
+            };
+
+            ws.onmessage = (event) => {
+              try {
+                const data = JSON.parse(event.data);
+                if (data.type === "presence" && data.user && data.user.id !== id) {
+                  const remoteUser = data.user;
+                  setParticipants((current) => current.some((u) => u.id === remoteUser.id) ? current : [...current, remoteUser]);
+                  if (isHost) {
+                    ws.send(JSON.stringify({ type: "presence-ack", user: { id, username: session.username, isHost: true } }));
+                    connectToPeer(remoteUser.id);
+                  } else if (remoteUser.isHost) {
+                    connectToPeer(remoteUser.id);
+                  }
+                } else if (data.type === "presence-ack" && data.user && data.user.id !== id) {
+                  const remoteUser = data.user;
+                  setParticipants((current) => current.some((u) => u.id === remoteUser.id) ? current : [...current, remoteUser]);
+                  connectToPeer(remoteUser.id);
+                }
+              } catch {
+                // non-json socket messages ignored
+              }
+            };
+          } catch {
+            // silent WSS fallback
+          }
         });
 
         peer.on("connection", (dataConn) => {
@@ -812,6 +848,7 @@ function MovieRoom({ session, onLeave }) {
       socketRef.current?.disconnect();
       peerRef.current?.destroy();
       channelRef.current?.close();
+      wsRef.current?.close();
       peersRef.current.forEach(({ pc }) => pc.close());
       peersRef.current.clear();
       cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
