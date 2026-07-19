@@ -1047,7 +1047,7 @@ function MovieRoom({ session, onLeave }) {
           <button className="setting-row" onClick={() => setAmbience((value) => !value)}><span>{ambience ? <Moon size={17} /> : <Sun size={17} />}</span><div><strong>Theatre ambience</strong><small>Soft cinematic glow</small></div><i className={ambience ? "is-on" : ""}>{ambience ? "On" : "Off"}</i></button>
           <button className="setting-row" onClick={toggleMic}><span>{micOn ? <Mic size={17} /> : <MicOff size={17} />}</span><div><strong>Microphone</strong><small>Echo cancellation enabled</small></div><i className={micOn ? "is-on" : ""}>{micOn ? "On" : "Off"}</i></button>
           <button className="setting-row" onClick={toggleCamera}><span>{cameraOn ? <Camera size={17} /> : <CameraOff size={17} />}</span><div><strong>Camera</strong><small>HD when available</small></div><i className={cameraOn ? "is-on" : ""}>{cameraOn ? "On" : "Off"}</i></button>
-          <div className="settings-security"><Check size={13} /><span><strong>Private peer-to-peer media</strong><small>WebRTC encrypted in transit · 12 seats max</small></span></div>
+          <div className="settings-security"><Check size={13} /><span><strong>Private peer-to-peer media</strong><small>WebRTC encrypted in transit · 20 seats max</small></span></div>
         </div>
       )}
 
@@ -1100,7 +1100,7 @@ function MovieRoom({ session, onLeave }) {
             <div className="people-grid">
               <ParticipantTile participant={self} stream={selfMedia} self micOn={micOn} />
               {others.map((participant) => <ParticipantTile key={participant.id} participant={participant} stream={remoteMedia[participant.id]?.cameraStream} micOn={Boolean(remoteMedia[participant.id]?.cameraStream?.getAudioTracks().length)} />)}
-              {Array.from({ length: Math.max(0, Math.min(3, 4 - participants.length)) }).map((_, index) => <EmptySeat key={index} />)}
+              {Array.from({ length: Math.max(0, Math.min(3, 20 - participants.length)) }).map((_, index) => <EmptySeat key={index} />)}
               <button className="add-seat" onClick={copyInvite}><span><Copy size={18} /></span><strong>Invite</strong><small>Copy room link</small></button>
             </div>
           </div>
