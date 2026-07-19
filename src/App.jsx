@@ -242,9 +242,12 @@ function VideoSurface({ stream, muted = false, className = "" }) {
 
 function ParticipantTile({ participant, stream, self = false, micOn = false }) {
   const hasVideo = Boolean(stream?.getVideoTracks().some((track) => track.readyState === "live"));
+  const hasAudio = Boolean(stream?.getAudioTracks().some((track) => track.readyState === "live"));
+  const hasMedia = hasVideo || hasAudio;
   return (
     <div className={`participant ${hasVideo ? "participant--video" : ""}`}>
-      {hasVideo ? <VideoSurface stream={stream} muted={self} /> : <Avatar name={participant.username} id={participant.id} size="lg" online />}
+      {hasMedia && <VideoSurface stream={stream} muted={self} className={hasVideo ? "participant__video" : "participant__audio-only"} style={hasVideo ? {} : { display: "none" }} />}
+      {!hasVideo && <Avatar name={participant.username} id={participant.id} size="lg" online />}
       <div className="participant__shade" />
       <div className="participant__name"><span>{self ? "You" : participant.username}</span>{micOn ? <Mic size={13} /> : <MicOff size={13} />}</div>
     </div>
