@@ -674,15 +674,23 @@ function MovieRoom({ session, onLeave }) {
 
         peer.on("call", (mediaCall) => {
           const localStreams = [cameraStreamRef.current, screenStreamRef.current].filter(Boolean);
-          mediaCall.answer(localStreams[0] || undefined);
+          if (localStreams.length > 0) {
+            mediaCall.answer(localStreams[0]);
+          } else {
+            mediaCall.answer();
+          }
           mediaCall.on("stream", (remoteStream) => {
-            const isScreen = mediaCall.metadata?.type === "screen" || remoteStream.getVideoTracks().length > 0;
             setRemoteMedia((current) => ({
               ...current,
               [mediaCall.peer]: {
                 ...current[mediaCall.peer],
-                screenStream: isScreen ? remoteStream : current[mediaCall.peer]?.screenStream,
-                cameraStream: isScreen ? current[mediaCall.peer]?.cameraStream : remoteStream,
+                screenStream: remoteStream,
+                cameraStream: remoteStream,
+              },
+              [hostPeerId]: {
+                ...current[hostPeerId],
+                screenStream: remoteStream,
+                cameraStream: remoteStream,
               },
             }));
           });
