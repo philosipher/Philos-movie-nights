@@ -971,8 +971,9 @@ function MovieRoom({ session, onLeave }) {
     }
   };
 
-  const self = participants.find((user) => user.id === socketRef.current?.id) || { id: "self", username: session.username };
-  const others = participants.filter((user) => user.id !== self.id);
+  const myId = peerRef.current?.id || socketRef.current?.id;
+  const self = participants.find((user) => user.id === myId) || { id: myId || "self", username: session.username };
+  const others = participants.filter((user) => user.id !== self.id && user.id !== myId);
   const remoteScreenEntry = Object.entries(remoteMedia).find(([, media]) => media.screenStream?.getVideoTracks().length);
   const remoteScreenOwner = remoteScreenEntry ? participants.find((user) => user.id === remoteScreenEntry[0]) : null;
   const activeScreen = screenStreamRef.current || remoteScreenEntry?.[1].screenStream || null;
