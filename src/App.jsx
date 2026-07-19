@@ -573,66 +573,71 @@ function MovieRoom({ session, onLeave }) {
       });
     } else {
       // -------------------------------------------------------------
-      // STANDALONE SERVERLESS PEERJS MODE (For EdgeOne Pages directly)
+      // STANDALONE SERVERLESS PEERJS MODE (Cross-Device P2P WebRTC)
       // -------------------------------------------------------------
       const cleanCode = cleanRoomCode(session.roomCode);
-      const myPeerId = `philos-${cleanCode}-${Math.random().toString(36).substring(2, 7)}`;
-      const peer = new Peer(myPeerId, {
-        host: "0.peerjs.com",
-        port: 443,
-        path: "/",
-        secure: true,
-        config: {
-          iceServers: [
-            { urls: "stun:stun.l.google.com:19302" },
-            { urls: "stun:stun1.l.google.com:19302" },
-          ],
-        },
-      });
-      peerRef.current = peer;
+      const hostPeerId = `philos-host-${cleanCode}`;
 
-      peer.on("open", (id) => {
-        setConnected(true);
-        const selfUser = { id, username: session.username };
-        setParticipants([selfUser]);
-        setMessages([{
-          id: "welcome",
-          system: true,
-          text: `Welcome to ${session.roomCode}. Share your screen when everyone’s settled in.`,
-        }]);
-
-        const channel = new BroadcastChannel(`philos-room-${cleanCode}`);
-        channelRef.current = channel;
-        channel.onmessage = (event) => {
-          if (event.data?.type === "ping" && event.data.peerId !== id) {
-            connectToPeer(event.data.peerId);
-            channel.postMessage({ type: "pong", peerId: id });
-          } else if (event.data?.type === "pong" && event.data.peerId !== id) {
-            connectToPeer(event.data.peerId);
-          }
-        };
-        channel.postMessage({ type: "ping", peerId: id });
-      });
-
-      peer.on("connection", (dataConn) => {
-        setupDataConnection(dataConn);
-      });
-
-      peer.on("call", (mediaCall) => {
-        const localStreams = [cameraStreamRef.current, screenStreamRef.current].filter(Boolean);
-        mediaCall.answer(localStreams[0] || undefined);
-        mediaCall.on("stream", (remoteStream) => {
-          setRemoteMedia((current) => ({
-            ...current,
-            [mediaCall.peer]: { ...current[mediaCall.peer], cameraStream: remoteStream },
-          }));
+      const initPeer = (asHost = true) => {
+        const myPeerId = asHost ? hostPeerId : `philos-guest-${cleanCode}-${Math.random().toString(36).substring(2, 7)}`;
+        const peer = new Peer(myPeerId, {
+          host: "0.peerjs.com",
+          port: 443,
+          path: "/",
+          secure: true,
+          config: {
+            iceServers: [
+              { urls: "stun:stun.l.google.com:19302" },
+              { urls: "stun:stun1.l.google.com:19302" },
+            ],
+          },
         });
-      });
+        peerRef.current = peer;
 
-      peer.on("error", (err) => {
-        console.warn("PeerJS connection state:", err);
-        setConnected(true);
-      });
+        peer.on("open", (id) => {
+          setConnected(true);
+          const selfUser = { id, username: session.username };
+          setParticipants([selfUser]);
+          setMessages([{
+            id: "welcome",
+            system: true,
+            text: `Welcome to ${session.roomCode}. Share your screen when everyone’s settled in.`,
+          }]);
+
+          if (!asHost) {
+            // Guest connects to Host over the Internet
+            connectToPeer(hostPeerId);
+          }
+        });
+
+        peer.on("connection", (dataConn) => {
+          setupDataConnection(dataConn);
+        });
+
+        peer.on("call", (mediaCall) => {
+          const localStreams = [cameraStreamRef.current, screenStreamRef.current].filter(Boolean);
+          mediaCall.answer(localStreams[0] || undefined);
+          mediaCall.on("stream", (remoteStream) => {
+            setRemoteMedia((current) => ({
+              ...current,
+              [mediaCall.peer]: { ...current[mediaCall.peer], cameraStream: remoteStream },
+            }));
+          });
+        });
+
+        peer.on("error", (err) => {
+          if (asHost && err.type === "unavailable-id") {
+            // Host ID taken, join as Guest!
+            peer.destroy();
+            initPeer(false);
+          } else {
+            console.warn("PeerJS connection note:", err);
+            setConnected(true);
+          }
+        });
+      };
+
+      initPeer(true);
     }
 
     return () => {
@@ -733,6 +738,10 @@ function MovieRoom({ session, onLeave }) {
   const toggleScreen = async () => {
     if (screenOn) {
       stopScreen();
+      return;
+    }
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      showToast("Screen sharing requires a desktop browser (Chrome, Edge, Firefox on PC or Mac).", "error");
       return;
     }
     setSharingBusy(true);
