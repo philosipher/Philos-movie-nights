@@ -498,25 +498,28 @@ function MovieRoom({ session, onLeave }) {
     if (socketRef.current) {
       peersRef.current.forEach((_peer, peerId) => makeOffer(peerId));
     } else if (peerRef.current) {
-      const activeStreams = [cameraStreamRef.current, screenStreamRef.current].filter(Boolean);
       dataConnsRef.current.forEach((_conn, targetPeerId) => {
-        activeStreams.forEach((stream) => {
-          const call = peerRef.current.call(targetPeerId, stream);
+        if (screenStreamRef.current) {
+          const call = peerRef.current.call(targetPeerId, screenStreamRef.current, { metadata: { type: "screen", isHost: session?.isHost !== false } });
           call?.on("stream", (remoteStream) => {
-            const isVideo = remoteStream.getVideoTracks().length > 0;
             setRemoteMedia((current) => ({
               ...current,
-              [targetPeerId]: {
-                ...current[targetPeerId],
-                screenStream: isVideo ? remoteStream : current[targetPeerId]?.screenStream,
-                cameraStream: remoteStream,
-              },
+              [targetPeerId]: { ...current[targetPeerId], screenStream: remoteStream },
             }));
           });
-        });
+        }
+        if (cameraStreamRef.current) {
+          const call = peerRef.current.call(targetPeerId, cameraStreamRef.current, { metadata: { type: "camera", isHost: session?.isHost !== false } });
+          call?.on("stream", (remoteStream) => {
+            setRemoteMedia((current) => ({
+              ...current,
+              [targetPeerId]: { ...current[targetPeerId], cameraStream: remoteStream },
+            }));
+          });
+        }
       });
     }
-  }, [makeOffer]);
+  }, [makeOffer, session?.isHost]);
 
   const peerRef = useRef(null);
   const dataConnsRef = useRef(new Map());
@@ -575,19 +578,25 @@ function MovieRoom({ session, onLeave }) {
     const conn = peerRef.current.connect(targetPeerId, { config: { iceServers: GLOBAL_ICE_SERVERS } });
     setupDataConnection(conn);
 
-    const activeStreams = [cameraStreamRef.current, screenStreamRef.current].filter(Boolean);
-    if (activeStreams.length) {
-      activeStreams.forEach((stream) => {
-        const call = peerRef.current.call(targetPeerId, stream, { config: { iceServers: GLOBAL_ICE_SERVERS } });
-        call?.on("stream", (remoteStream) => {
-          setRemoteMedia((current) => ({
-            ...current,
-            [targetPeerId]: { ...current[targetPeerId], cameraStream: remoteStream, screenStream: remoteStream },
-          }));
-        });
+    if (screenStreamRef.current) {
+      const call = peerRef.current.call(targetPeerId, screenStreamRef.current, { metadata: { type: "screen", isHost: session?.isHost !== false }, config: { iceServers: GLOBAL_ICE_SERVERS } });
+      call?.on("stream", (remoteStream) => {
+        setRemoteMedia((current) => ({
+          ...current,
+          [targetPeerId]: { ...current[targetPeerId], screenStream: remoteStream },
+        }));
       });
     }
-  }, [setupDataConnection]);
+    if (cameraStreamRef.current) {
+      const call = peerRef.current.call(targetPeerId, cameraStreamRef.current, { metadata: { type: "camera", isHost: session?.isHost !== false }, config: { iceServers: GLOBAL_ICE_SERVERS } });
+      call?.on("stream", (remoteStream) => {
+        setRemoteMedia((current) => ({
+          ...current,
+          [targetPeerId]: { ...current[targetPeerId], cameraStream: remoteStream },
+        }));
+      });
+    }
+  }, [setupDataConnection, session?.isHost]);
 
   useEffect(() => {
     const socketUrl = session?.serverUrl || localStorage.getItem("philos-server-url") || import.meta.env.VITE_SOCKET_URL || undefined;
@@ -708,47 +717,52 @@ function MovieRoom({ session, onLeave }) {
 
         peer.on("connection", (dataConn) => {
           setupDataConnection(dataConn);
-          const activeStreams = [
-            { stream: screenStreamRef.current, type: "screen" },
-            { stream: cameraStreamRef.current, type: "camera" },
-          ].filter((item) => Boolean(item.stream));
-
-          activeStreams.forEach(({ stream, type }) => {
-            const call = peer.call(dataConn.peer, stream, { metadata: { type } });
+          if (screenStreamRef.current) {
+            const call = peer.call(dataConn.peer, screenStreamRef.current, { metadata: { type: "screen", isHost } });
             call?.on("stream", (remoteStream) => {
               setRemoteMedia((current) => ({
                 ...current,
-                [dataConn.peer]: {
-                  ...current[dataConn.peer],
-                  screenStream: type === "screen" ? remoteStream : current[dataConn.peer]?.screenStream,
-                  cameraStream: type === "camera" ? remoteStream : current[dataConn.peer]?.cameraStream,
-                },
+                [dataConn.peer]: { ...current[dataConn.peer], screenStream: remoteStream },
               }));
             });
-          });
+          }
+          if (cameraStreamRef.current) {
+            const call = peer.call(dataConn.peer, cameraStreamRef.current, { metadata: { type: "camera", isHost } });
+            call?.on("stream", (remoteStream) => {
+              setRemoteMedia((current) => ({
+                ...current,
+                [dataConn.peer]: { ...current[dataConn.peer], cameraStream: remoteStream },
+              }));
+            });
+          }
         });
 
         peer.on("call", (mediaCall) => {
-          const localStreams = [cameraStreamRef.current, screenStreamRef.current].filter(Boolean);
+          const localStreams = [screenStreamRef.current, cameraStreamRef.current].filter(Boolean);
           if (localStreams.length > 0) {
             mediaCall.answer(localStreams[0]);
           } else {
             mediaCall.answer();
           }
           mediaCall.on("stream", (remoteStream) => {
-            setRemoteMedia((current) => ({
-              ...current,
-              [mediaCall.peer]: {
-                ...current[mediaCall.peer],
-                screenStream: remoteStream,
-                cameraStream: remoteStream,
-              },
-              [hostPeerId]: {
-                ...current[hostPeerId],
-                screenStream: remoteStream,
-                cameraStream: remoteStream,
-              },
-            }));
+            const isScreenCall = mediaCall.metadata?.type === "screen";
+            const fromHost = mediaCall.metadata?.isHost || mediaCall.peer === hostPeerId;
+
+            setRemoteMedia((current) => {
+              const peerMedia = current[mediaCall.peer] || {};
+              if (isScreenCall && fromHost) {
+                return {
+                  ...current,
+                  [mediaCall.peer]: { ...peerMedia, screenStream: remoteStream },
+                  [hostPeerId]: { ...current[hostPeerId], screenStream: remoteStream },
+                };
+              } else {
+                return {
+                  ...current,
+                  [mediaCall.peer]: { ...peerMedia, cameraStream: remoteStream },
+                };
+              }
+            });
           });
         });
 
@@ -1014,10 +1028,11 @@ function MovieRoom({ session, onLeave }) {
   const myId = peerRef.current?.id || socketRef.current?.id;
   const self = participants.find((user) => user.id === myId) || { id: myId || "self", username: session.username };
   const others = participants.filter((user) => user.id !== self.id && user.id !== myId);
-  const remoteScreenEntry = Object.entries(remoteMedia).find(([, media]) => media?.screenStream || media?.cameraStream);
-  const remoteScreenOwner = remoteScreenEntry ? participants.find((user) => user.id === remoteScreenEntry[0]) : null;
-  const activeScreen = screenStreamRef.current || remoteScreenEntry?.[1]?.screenStream || remoteScreenEntry?.[1]?.cameraStream || null;
-  const activeScreenOwner = screenStreamRef.current ? "You" : (remoteScreenOwner?.username || "Host");
+  const cleanCode = cleanRoomCode(session.roomCode);
+  const hostPeerId = `philos-host-${cleanCode}`;
+  const hostMedia = remoteMedia[hostPeerId] || Object.values(remoteMedia).find((m) => m?.screenStream);
+  const activeScreen = screenStreamRef.current || hostMedia?.screenStream || null;
+  const activeScreenOwner = screenStreamRef.current ? "You" : "Host";
   const selfMedia = cameraStreamRef.current;
   void mediaVersion;
 
