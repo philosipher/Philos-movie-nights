@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
+import { Peer } from "peerjs";
 import {
   ArrowRight,
   Camera,
@@ -426,83 +427,213 @@ function MovieRoom({ session, onLeave }) {
     peersRef.current.forEach((_peer, peerId) => makeOffer(peerId));
   }, [makeOffer]);
 
+  const peerRef = useRef(null);
+  const dataConnsRef = useRef(new Map());
+  const channelRef = useRef(null);
+
+  const broadcastServerless = useCallback((type, payload) => {
+    dataConnsRef.current.forEach((conn) => {
+      if (conn.open) conn.send({ type, payload });
+    });
+  }, []);
+
+  const setupDataConnection = useCallback((conn) => {
+    dataConnsRef.current.set(conn.peer, conn);
+    conn.on("open", () => {
+      conn.send({ type: "user-info", payload: { id: peerRef.current?.id, username: session.username } });
+    });
+    conn.on("data", (data) => {
+      if (!data || !data.type) return;
+      if (data.type === "user-info") {
+        const user = data.payload;
+        setParticipants((current) => current.some((item) => item.id === user.id) ? current : [...current, user]);
+        setMessages((current) => [...current, { id: `join-${user.id}`, system: true, text: `${user.username} grabbed a seat.` }]);
+        showToast(`${user.username} joined the room`, "success");
+      } else if (data.type === "chat-message") {
+        setMessages((current) => [...current, data.payload]);
+      } else if (data.type === "reaction") {
+        const reaction = data.payload;
+        setReactions((current) => [...current, reaction]);
+        setTimeout(() => setReactions((current) => current.filter((item) => item.id !== reaction.id)), 2600);
+      } else if (data.type === "room-state") {
+        setQueue(data.payload.queue || []);
+        setNowPlaying(data.payload.nowPlaying || null);
+      } else if (data.type === "countdown-start") {
+        runCountdown(data.payload);
+      }
+    });
+    conn.on("close", () => {
+      dataConnsRef.current.delete(conn.peer);
+      setParticipants((current) => current.filter((user) => user.id !== conn.peer));
+      setRemoteMedia((current) => {
+        const next = { ...current };
+        delete next[conn.peer];
+        return next;
+      });
+    });
+  }, [runCountdown, session.username, showToast]);
+
+  const connectToPeer = useCallback((targetPeerId) => {
+    if (!peerRef.current || targetPeerId === peerRef.current.id || dataConnsRef.current.has(targetPeerId)) return;
+    const conn = peerRef.current.connect(targetPeerId);
+    setupDataConnection(conn);
+
+    const activeStreams = [cameraStreamRef.current, screenStreamRef.current].filter(Boolean);
+    if (activeStreams.length) {
+      activeStreams.forEach((stream) => {
+        const call = peerRef.current.call(targetPeerId, stream);
+        call?.on("stream", (remoteStream) => {
+          setRemoteMedia((current) => ({
+            ...current,
+            [targetPeerId]: { ...current[targetPeerId], cameraStream: remoteStream },
+          }));
+        });
+      });
+    }
+  }, [setupDataConnection]);
+
   useEffect(() => {
     const socketUrl = session?.serverUrl || localStorage.getItem("philos-server-url") || import.meta.env.VITE_SOCKET_URL || undefined;
-    const socket = io(socketUrl, { transports: ["websocket", "polling"], timeout: 10000 });
-    socketRef.current = socket;
+    
+    if (socketUrl) {
+      const socket = io(socketUrl, { transports: ["websocket", "polling"], timeout: 10000 });
+      socketRef.current = socket;
 
-    socket.on("connect_error", () => {
-      setConnected(false);
-      showToast("Signaling server offline. Ensure server is running or check server URL.", "error");
-    });
+      socket.on("connect_error", () => {
+        setConnected(false);
+        showToast("Signaling server offline. Check server URL in Settings.", "error");
+      });
 
-    socket.on("connect", () => {
-      socket.emit("join-room", session, (response) => {
-        if (!response?.ok) {
-          showToast(response?.error || "We couldn't enter that room.", "error");
-          setTimeout(onLeave, 1800);
-          return;
+      socket.on("connect", () => {
+        socket.emit("join-room", session, (response) => {
+          if (!response?.ok) {
+            showToast(response?.error || "We couldn't enter that room.", "error");
+            setTimeout(onLeave, 1800);
+            return;
+          }
+          setConnected(true);
+          setParticipants([response.self, ...response.users]);
+          setQueue(response.roomState?.queue || []);
+          setNowPlaying(response.roomState?.nowPlaying || null);
+          setMessages([{
+            id: "welcome",
+            system: true,
+            text: `Welcome to ${session.roomCode}. Share your screen when everyone’s settled in.`,
+          }]);
+          response.users.forEach((user) => makeOffer(user.id));
+        });
+      });
+
+      socket.on("disconnect", () => setConnected(false));
+      socket.on("participant-joined", (user) => {
+        setParticipants((current) => current.some((item) => item.id === user.id) ? current : [...current, user]);
+        setMessages((current) => [...current, { id: `join-${user.id}`, system: true, text: `${user.username} grabbed a seat.` }]);
+        showToast(`${user.username} joined the room`, "success");
+      });
+      socket.on("participant-left", ({ id, username }) => {
+        setParticipants((current) => current.filter((user) => user.id !== id));
+        setMessages((current) => [...current, { id: `left-${id}`, system: true, text: `${username} left the room.` }]);
+        const peer = peersRef.current.get(id);
+        peer?.pc.close();
+        peersRef.current.delete(id);
+        setRemoteMedia((current) => {
+          const next = { ...current };
+          delete next[id];
+          return next;
+        });
+      });
+      socket.on("chat-message", (message) => setMessages((current) => [...current, message]));
+      socket.on("room-state", (state) => {
+        setQueue(state.queue || []);
+        setNowPlaying(state.nowPlaying || null);
+      });
+      socket.on("countdown-start", runCountdown);
+      socket.on("reaction", (reaction) => {
+        setReactions((current) => [...current, reaction]);
+        setTimeout(() => setReactions((current) => current.filter((item) => item.id !== reaction.id)), 2600);
+      });
+      socket.on("signal", async ({ from, type, sdp, candidate, streams = {} }) => {
+        const peer = createPeer(from);
+        if (Object.keys(streams).length) peer.remoteStreamTypes = streams;
+        try {
+          if (type === "offer") {
+            await peer.pc.setRemoteDescription(sdp);
+            addLocalTracks(peer.pc);
+            const answer = await peer.pc.createAnswer();
+            await peer.pc.setLocalDescription(answer);
+            socket.emit("signal", { target: from, type: "answer", sdp: peer.pc.localDescription, streams: streamMeta() });
+          } else if (type === "answer") {
+            await peer.pc.setRemoteDescription(sdp);
+          } else if (type === "candidate" && candidate) {
+            await peer.pc.addIceCandidate(candidate);
+          }
+        } catch (error) {
+          console.warn("WebRTC signal error", error);
         }
+      });
+    } else {
+      // -------------------------------------------------------------
+      // STANDALONE SERVERLESS PEERJS MODE (For EdgeOne Pages directly)
+      // -------------------------------------------------------------
+      const cleanCode = cleanRoomCode(session.roomCode);
+      const myPeerId = `philos-${cleanCode}-${Math.random().toString(36).substring(2, 7)}`;
+      const peer = new Peer(myPeerId, {
+        host: "0.peerjs.com",
+        port: 443,
+        path: "/",
+        secure: true,
+        config: {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+          ],
+        },
+      });
+      peerRef.current = peer;
+
+      peer.on("open", (id) => {
         setConnected(true);
-        setParticipants([response.self, ...response.users]);
-        setQueue(response.roomState?.queue || []);
-        setNowPlaying(response.roomState?.nowPlaying || null);
+        const selfUser = { id, username: session.username };
+        setParticipants([selfUser]);
         setMessages([{
           id: "welcome",
           system: true,
           text: `Welcome to ${session.roomCode}. Share your screen when everyone’s settled in.`,
         }]);
-        response.users.forEach((user) => makeOffer(user.id));
-      });
-    });
 
-    socket.on("disconnect", () => setConnected(false));
-    socket.on("participant-joined", (user) => {
-      setParticipants((current) => current.some((item) => item.id === user.id) ? current : [...current, user]);
-      setMessages((current) => [...current, { id: `join-${user.id}`, system: true, text: `${user.username} grabbed a seat.` }]);
-      showToast(`${user.username} joined the room`, "success");
-    });
-    socket.on("participant-left", ({ id, username }) => {
-      setParticipants((current) => current.filter((user) => user.id !== id));
-      setMessages((current) => [...current, { id: `left-${id}`, system: true, text: `${username} left the room.` }]);
-      const peer = peersRef.current.get(id);
-      peer?.pc.close();
-      peersRef.current.delete(id);
-      setRemoteMedia((current) => {
-        const next = { ...current };
-        delete next[id];
-        return next;
+        const channel = new BroadcastChannel(`philos-room-${cleanCode}`);
+        channelRef.current = channel;
+        channel.onmessage = (event) => {
+          if (event.data?.type === "ping" && event.data.peerId !== id) {
+            connectToPeer(event.data.peerId);
+            channel.postMessage({ type: "pong", peerId: id });
+          } else if (event.data?.type === "pong" && event.data.peerId !== id) {
+            connectToPeer(event.data.peerId);
+          }
+        };
+        channel.postMessage({ type: "ping", peerId: id });
       });
-    });
-    socket.on("chat-message", (message) => setMessages((current) => [...current, message]));
-    socket.on("room-state", (state) => {
-      setQueue(state.queue || []);
-      setNowPlaying(state.nowPlaying || null);
-    });
-    socket.on("countdown-start", runCountdown);
-    socket.on("reaction", (reaction) => {
-      setReactions((current) => [...current, reaction]);
-      setTimeout(() => setReactions((current) => current.filter((item) => item.id !== reaction.id)), 2600);
-    });
-    socket.on("signal", async ({ from, type, sdp, candidate, streams = {} }) => {
-      const peer = createPeer(from);
-      if (Object.keys(streams).length) peer.remoteStreamTypes = streams;
-      try {
-        if (type === "offer") {
-          await peer.pc.setRemoteDescription(sdp);
-          addLocalTracks(peer.pc);
-          const answer = await peer.pc.createAnswer();
-          await peer.pc.setLocalDescription(answer);
-          socket.emit("signal", { target: from, type: "answer", sdp: peer.pc.localDescription, streams: streamMeta() });
-        } else if (type === "answer") {
-          await peer.pc.setRemoteDescription(sdp);
-        } else if (type === "candidate" && candidate) {
-          await peer.pc.addIceCandidate(candidate);
-        }
-      } catch (error) {
-        console.warn("WebRTC signal error", error);
-      }
-    });
+
+      peer.on("connection", (dataConn) => {
+        setupDataConnection(dataConn);
+      });
+
+      peer.on("call", (mediaCall) => {
+        const localStreams = [cameraStreamRef.current, screenStreamRef.current].filter(Boolean);
+        mediaCall.answer(localStreams[0] || undefined);
+        mediaCall.on("stream", (remoteStream) => {
+          setRemoteMedia((current) => ({
+            ...current,
+            [mediaCall.peer]: { ...current[mediaCall.peer], cameraStream: remoteStream },
+          }));
+        });
+      });
+
+      peer.on("error", (err) => {
+        console.warn("PeerJS connection state:", err);
+        setConnected(true);
+      });
+    }
 
     return () => {
       clearTimeout(toastTimer.current);
@@ -510,13 +641,15 @@ function MovieRoom({ session, onLeave }) {
         clearTimeout(timer);
         clearInterval(timer);
       });
-      socket.disconnect();
+      socketRef.current?.disconnect();
+      peerRef.current?.destroy();
+      channelRef.current?.close();
       peersRef.current.forEach(({ pc }) => pc.close());
       peersRef.current.clear();
       cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
       screenStreamRef.current?.getTracks().forEach((track) => track.stop());
     };
-  }, [addLocalTracks, createPeer, makeOffer, onLeave, runCountdown, session, showToast, streamMeta]);
+  }, [addLocalTracks, connectToPeer, createPeer, makeOffer, onLeave, runCountdown, session, setupDataConnection, showToast, streamMeta]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -631,23 +764,66 @@ function MovieRoom({ session, onLeave }) {
     event.preventDefault();
     const text = chatText.trim();
     if (!text) return;
-    socketRef.current?.emit("chat-message", { text });
+    if (socketRef.current) {
+      socketRef.current.emit("chat-message", { text });
+    } else {
+      const payload = {
+        id: `msg-${Date.now()}`,
+        userId: peerRef.current?.id || "self",
+        username: session.username,
+        text,
+        sentAt: new Date().toISOString(),
+      };
+      setMessages((current) => [...current, payload]);
+      broadcastServerless("chat-message", payload);
+    }
     setChatText("");
   };
 
-  const sendReaction = (emoji) => socketRef.current?.emit("reaction", { emoji });
+  const sendReaction = (emoji) => {
+    if (socketRef.current) {
+      socketRef.current.emit("reaction", { emoji });
+    } else {
+      const reaction = { id: `react-${Date.now()}`, emoji, username: session.username };
+      setReactions((current) => [...current, reaction]);
+      setTimeout(() => setReactions((current) => current.filter((item) => item.id !== reaction.id)), 2600);
+      broadcastServerless("reaction", reaction);
+    }
+  };
 
   const addToQueue = (event) => {
     event.preventDefault();
     const title = queueTitle.trim();
     if (!title) return;
-    socketRef.current?.emit("queue-add", { title }, (response) => {
-      if (!response?.ok) showToast(response?.error || "That film couldn't be added.", "error");
-    });
+    if (socketRef.current) {
+      socketRef.current.emit("queue-add", { title }, (response) => {
+        if (!response?.ok) showToast(response?.error || "That film couldn't be added.", "error");
+      });
+    } else {
+      const newItem = {
+        id: `item-${Date.now()}`,
+        title,
+        addedBy: session.username,
+        addedById: peerRef.current?.id || "self",
+        voters: [peerRef.current?.id || "self"],
+        votes: 1,
+      };
+      const nextQueue = [...queue, newItem];
+      setQueue(nextQueue);
+      broadcastServerless("room-state", { queue: nextQueue, nowPlaying });
+    }
     setQueueTitle("");
   };
 
-  const startCountdown = () => socketRef.current?.emit("start-countdown");
+  const startCountdown = () => {
+    if (socketRef.current) {
+      socketRef.current.emit("start-countdown");
+    } else {
+      const payload = { startsAt: Date.now() + 600, startedBy: session.username };
+      runCountdown(payload);
+      broadcastServerless("countdown-start", payload);
+    }
+  };
 
   const togglePictureInPicture = async () => {
     const video = document.querySelector(".screen__video");
@@ -795,9 +971,43 @@ function MovieRoom({ session, onLeave }) {
               setQueueTitle={setQueueTitle}
               selfId={self.id}
               onAdd={addToQueue}
-              onVote={(itemId) => socketRef.current?.emit("queue-vote", { itemId })}
-              onPlay={(itemId) => socketRef.current?.emit("set-now-playing", { itemId })}
-              onRemove={(itemId) => socketRef.current?.emit("queue-remove", { itemId })}
+              onVote={(itemId) => {
+                if (socketRef.current) {
+                  socketRef.current.emit("queue-vote", { itemId });
+                } else {
+                  const nextQueue = queue.map((item) => {
+                    if (item.id !== itemId) return item;
+                    const voted = item.voters?.includes(self.id);
+                    const voters = voted ? item.voters.filter((id) => id !== self.id) : [...(item.voters || []), self.id];
+                    return { ...item, voters, votes: voters.length };
+                  });
+                  setQueue(nextQueue);
+                  broadcastServerless("room-state", { queue: nextQueue, nowPlaying });
+                }
+              }}
+              onPlay={(itemId) => {
+                const item = queue.find((entry) => entry.id === itemId);
+                if (!item) return;
+                if (socketRef.current) {
+                  socketRef.current.emit("set-now-playing", { itemId });
+                } else {
+                  const np = { id: item.id, title: item.title };
+                  setNowPlaying(np);
+                  broadcastServerless("room-state", { queue, nowPlaying: np });
+                  const sysMsg = { id: `now-playing-${Date.now()}`, system: true, text: `Now watching: ${item.title}` };
+                  setMessages((current) => [...current, sysMsg]);
+                  broadcastServerless("chat-message", sysMsg);
+                }
+              }}
+              onRemove={(itemId) => {
+                if (socketRef.current) {
+                  socketRef.current.emit("queue-remove", { itemId });
+                } else {
+                  const nextQueue = queue.filter((entry) => entry.id !== itemId);
+                  setQueue(nextQueue);
+                  broadcastServerless("room-state", { queue: nextQueue, nowPlaying });
+                }
+              }}
             />
           )}
         </aside>
