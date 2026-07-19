@@ -784,7 +784,7 @@ function MovieRoom({ session, onLeave }) {
             }
             try {
               if (data.sigType === "offer") {
-                await peer.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                await peer.pc.setRemoteDescription(data.sdp);
                 addLocalTracks(peer.pc);
                 const answer = await peer.pc.createAnswer();
                 await peer.pc.setLocalDescription(answer);
@@ -803,7 +803,7 @@ function MovieRoom({ session, onLeave }) {
                   }));
                 }
               } else if (data.sigType === "answer") {
-                await peer.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                await peer.pc.setRemoteDescription(data.sdp);
 
                 if (peer.iceQueue) {
                   while (peer.iceQueue.length > 0) {
@@ -812,7 +812,7 @@ function MovieRoom({ session, onLeave }) {
                   }
                 }
               } else if (data.sigType === "candidate" && data.candidate) {
-                const cand = new RTCIceCandidate(data.candidate);
+                const cand = data.candidate;
                 if (peer.pc.remoteDescription) {
                   await peer.pc.addIceCandidate(cand);
                 } else {
