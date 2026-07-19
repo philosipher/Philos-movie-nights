@@ -46,6 +46,8 @@ const GLOBAL_ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
   { urls: "stun:stun2.l.google.com:19302" },
+  { urls: "stun:stun3.l.google.com:19302" },
+  { urls: "stun:stun4.l.google.com:19302" },
   { urls: "stun:openrelay.metered.ca:80" },
   { urls: "stun:openrelay.metered.ca:443" },
   {
@@ -60,6 +62,11 @@ const GLOBAL_ICE_SERVERS = [
   },
   {
     urls: "turn:openrelay.metered.ca:443?transport=tcp",
+    username: "openrelay",
+    credential: "openrelay",
+  },
+  {
+    urls: "turns:openrelay.metered.ca:443?transport=tcp",
     username: "openrelay",
     credential: "openrelay",
   },
@@ -442,16 +449,21 @@ function MovieRoom({ session, onLeave }) {
     const pc = new RTCPeerConnection({
       iceServers: GLOBAL_ICE_SERVERS,
     });
-    const peer = { pc, remoteStreamTypes: {} };
+    const peer = { pc, remoteStreamTypes: {}, iceQueue: [] };
     peersRef.current.set(peerId, peer);
     addLocalTracks(pc);
 
     pc.onicecandidate = (event) => {
       if (!event.candidate) return;
+      const candidateJSON = typeof event.candidate.toJSON === "function" ? event.candidate.toJSON() : {
+        candidate: event.candidate.candidate,
+        sdpMid: event.candidate.sdpMid,
+        sdpMLineIndex: event.candidate.sdpMLineIndex,
+      };
       if (socketRef.current) {
-        socketRef.current.emit("signal", { target: peerId, type: "candidate", candidate: event.candidate });
+        socketRef.current.emit("signal", { target: peerId, type: "candidate", candidate: candidateJSON });
       } else if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ t: "signal", target: peerId, from: localIdRef.current, sigType: "candidate", candidate: event.candidate }));
+        wsRef.current.send(JSON.stringify({ t: "signal", target: peerId, from: localIdRef.current, sigType: "candidate", candidate: candidateJSON }));
       }
     };
     pc.ontrack = (event) => {
@@ -659,15 +671,36 @@ function MovieRoom({ session, onLeave }) {
         if (Object.keys(streams).length) peer.remoteStreamTypes = streams;
         try {
           if (type === "offer") {
-            await peer.pc.setRemoteDescription(sdp);
+            await peer.pc.setRemoteDescription(new RTCSessionDescription(sdp));
             addLocalTracks(peer.pc);
             const answer = await peer.pc.createAnswer();
             await peer.pc.setLocalDescription(answer);
+
+            if (peer.iceQueue) {
+              while (peer.iceQueue.length > 0) {
+                const cand = peer.iceQueue.shift();
+                await peer.pc.addIceCandidate(cand).catch(e => {});
+              }
+            }
+
             socket.emit("signal", { target: from, type: "answer", sdp: peer.pc.localDescription, streams: streamMeta() });
           } else if (type === "answer") {
-            await peer.pc.setRemoteDescription(sdp);
+            await peer.pc.setRemoteDescription(new RTCSessionDescription(sdp));
+
+            if (peer.iceQueue) {
+              while (peer.iceQueue.length > 0) {
+                const cand = peer.iceQueue.shift();
+                await peer.pc.addIceCandidate(cand).catch(e => {});
+              }
+            }
           } else if (type === "candidate" && candidate) {
-            await peer.pc.addIceCandidate(candidate);
+            const cand = new RTCIceCandidate(candidate);
+            if (peer.pc.remoteDescription) {
+              await peer.pc.addIceCandidate(cand);
+            } else {
+              if (!peer.iceQueue) peer.iceQueue = [];
+              peer.iceQueue.push(cand);
+            }
           }
         } catch (error) {
           console.warn("WebRTC signal error", error);
@@ -755,6 +788,14 @@ function MovieRoom({ session, onLeave }) {
                 addLocalTracks(peer.pc);
                 const answer = await peer.pc.createAnswer();
                 await peer.pc.setLocalDescription(answer);
+
+                if (peer.iceQueue) {
+                  while (peer.iceQueue.length > 0) {
+                    const cand = peer.iceQueue.shift();
+                    await peer.pc.addIceCandidate(cand).catch(e => {});
+                  }
+                }
+
                 if (ws.readyState === WebSocket.OPEN) {
                   ws.send(JSON.stringify({
                     t: "signal", target: data.from, from: myId, sigType: "answer",
@@ -763,8 +804,21 @@ function MovieRoom({ session, onLeave }) {
                 }
               } else if (data.sigType === "answer") {
                 await peer.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+
+                if (peer.iceQueue) {
+                  while (peer.iceQueue.length > 0) {
+                    const cand = peer.iceQueue.shift();
+                    await peer.pc.addIceCandidate(cand).catch(e => {});
+                  }
+                }
               } else if (data.sigType === "candidate" && data.candidate) {
-                await peer.pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                const cand = new RTCIceCandidate(data.candidate);
+                if (peer.pc.remoteDescription) {
+                  await peer.pc.addIceCandidate(cand);
+                } else {
+                  if (!peer.iceQueue) peer.iceQueue = [];
+                  peer.iceQueue.push(cand);
+                }
               }
             } catch (err) {
               console.warn("WebRTC signal error:", err);
