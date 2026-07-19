@@ -925,6 +925,8 @@ function MovieRoom({ session, onLeave }) {
   const selfMedia = cameraStreamRef.current;
   void mediaVersion;
 
+  const canShareScreen = Boolean(navigator.mediaDevices?.getDisplayMedia) && (!activeScreen || screenOn);
+
   return (
     <main className={`room ${chatOpen ? "" : "room--chat-closed"} ${ambience ? "room--ambient" : ""}`}>
       <Toast toast={toast} />
@@ -963,9 +965,18 @@ function MovieRoom({ session, onLeave }) {
               <div className="screen__empty">
                 <div className="screen__orb"><Play size={34} fill="currentColor" /></div>
                 <span className="screen__kicker">THE ROOM IS READY</span>
-                <h2>What are we watching?</h2>
-                <p>Share a browser tab or window, then press play when everyone’s here.</p>
-                <button onClick={toggleScreen} disabled={sharingBusy}><MonitorUp size={18} /> {sharingBusy ? "Opening picker…" : "Share your screen"}</button>
+                {canShareScreen ? (
+                  <>
+                    <h2>What are we watching?</h2>
+                    <p>Share a browser tab or window, then press play when everyone’s here.</p>
+                    <button onClick={toggleScreen} disabled={sharingBusy}><MonitorUp size={18} /> {sharingBusy ? "Opening picker…" : "Share your screen"}</button>
+                  </>
+                ) : (
+                  <>
+                    <h2>Waiting for presenter</h2>
+                    <p>The desktop room host will share the movie screen shortly. Sit back and enjoy!</p>
+                  </>
+                )}
               </div>
             )}
             <div className="screen__topbar">
@@ -980,7 +991,9 @@ function MovieRoom({ session, onLeave }) {
             <div className="screen__controlbar">
               <button className={`round-control ${micOn ? "round-control--on" : ""}`} onClick={toggleMic} title={micOn ? "Mute" : "Unmute"}>{micOn ? <Mic size={19} /> : <MicOff size={19} />}</button>
               <button className={`round-control ${cameraOn ? "round-control--on" : ""}`} onClick={toggleCamera} title={cameraOn ? "Camera off" : "Camera on"}>{cameraOn ? <Camera size={19} /> : <CameraOff size={19} />}</button>
-              <button className={`share-control ${screenOn ? "share-control--active" : ""}`} onClick={toggleScreen} disabled={sharingBusy}><MonitorUp size={18} /> {screenOn ? "Stop sharing" : "Share screen"}</button>
+              {(canShareScreen || screenOn) && (
+                <button className={`share-control ${screenOn ? "share-control--active" : ""}`} onClick={toggleScreen} disabled={sharingBusy}><MonitorUp size={18} /> {screenOn ? "Stop sharing" : "Share screen"}</button>
+              )}
               <button className="round-control round-control--countdown" onClick={startCountdown} title="Start a synced countdown"><Timer size={19} /></button>
               <button className="round-control" onClick={() => setChatOpen((value) => !value)} title="Toggle chat"><MessageCircle size={19} /></button>
               <button className="round-control round-control--leave" onClick={onLeave} title="Leave room"><DoorOpen size={19} /></button>
