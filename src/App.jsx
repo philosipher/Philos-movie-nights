@@ -654,12 +654,11 @@ function MovieRoom({ session, onLeave }) {
           activeStreams.forEach((stream) => {
             const call = peer.call(dataConn.peer, stream);
             call?.on("stream", (remoteStream) => {
-              const isVideo = remoteStream.getVideoTracks().length > 0;
               setRemoteMedia((current) => ({
                 ...current,
                 [dataConn.peer]: {
                   ...current[dataConn.peer],
-                  screenStream: isVideo ? remoteStream : current[dataConn.peer]?.screenStream,
+                  screenStream: remoteStream,
                   cameraStream: remoteStream,
                 },
               }));
@@ -671,12 +670,11 @@ function MovieRoom({ session, onLeave }) {
           const localStreams = [cameraStreamRef.current, screenStreamRef.current].filter(Boolean);
           mediaCall.answer(localStreams[0] || undefined);
           mediaCall.on("stream", (remoteStream) => {
-            const isVideo = remoteStream.getVideoTracks().length > 0;
             setRemoteMedia((current) => ({
               ...current,
               [mediaCall.peer]: {
                 ...current[mediaCall.peer],
-                screenStream: isVideo ? remoteStream : current[mediaCall.peer]?.screenStream,
+                screenStream: remoteStream,
                 cameraStream: remoteStream,
               },
             }));
@@ -685,9 +683,22 @@ function MovieRoom({ session, onLeave }) {
 
         peer.on("error", (err) => {
           if (asHost && err.type === "unavailable-id") {
-            // Host ID taken, join as Guest!
             peer.destroy();
-            initPeer(false);
+            // Host ID taken by dead ghost session, create fresh session
+            const freshHostId = `philos-host-${cleanCode}-${Date.now().toString(36).substring(4)}`;
+            const freshPeer = new Peer(freshHostId, {
+              host: "0.peerjs.com",
+              port: 443,
+              path: "/",
+              secure: true,
+              config: { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] },
+            });
+            peerRef.current = freshPeer;
+            freshPeer.on("open", (id) => {
+              setConnected(true);
+              setParticipants([{ id, username: session.username }]);
+            });
+            freshPeer.on("connection", (dataConn) => setupDataConnection(dataConn));
           } else {
             console.warn("PeerJS connection note:", err);
             setConnected(true);
