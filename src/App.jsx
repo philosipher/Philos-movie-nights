@@ -130,7 +130,7 @@ function Landing({ onEnter }) {
     }
     safeSetStorage("session", "philos-movie-nights-name", name);
     safeSetStorage("local", "philos-server-url", serverUrl.trim());
-    onEnter({ username: name, roomCode: code, serverUrl: serverUrl.trim() });
+    onEnter({ username: name, roomCode: code, serverUrl: serverUrl.trim(), isHost: mode === "create" });
   };
 
   return (
@@ -615,9 +615,10 @@ function MovieRoom({ session, onLeave }) {
       // -------------------------------------------------------------
       const cleanCode = cleanRoomCode(session.roomCode);
       const hostPeerId = `philos-host-${cleanCode}`;
+      const isHost = session.isHost !== false;
 
-      const initPeer = (asHost = true) => {
-        const myPeerId = asHost ? hostPeerId : `philos-guest-${cleanCode}-${Math.random().toString(36).substring(2, 7)}`;
+      const initPeer = () => {
+        const myPeerId = isHost ? hostPeerId : `philos-guest-${cleanCode}-${Math.random().toString(36).substring(2, 7)}`;
         const peer = new Peer(myPeerId, {
           host: "0.peerjs.com",
           port: 443,
@@ -639,27 +640,32 @@ function MovieRoom({ session, onLeave }) {
           setMessages([{
             id: "welcome",
             system: true,
-            text: `Welcome to ${session.roomCode}. Share your screen when everyone’s settled in.`,
+            text: isHost
+              ? `Welcome to ${session.roomCode}. Share your screen when everyone’s settled in.`
+              : `Joined room ${session.roomCode}. Waiting for the host to present.`,
           }]);
 
-          if (!asHost) {
-            // Guest connects to Host over the Internet
+          if (!isHost) {
             connectToPeer(hostPeerId);
           }
         });
 
         peer.on("connection", (dataConn) => {
           setupDataConnection(dataConn);
-          const activeStreams = [cameraStreamRef.current, screenStreamRef.current].filter(Boolean);
-          activeStreams.forEach((stream) => {
-            const call = peer.call(dataConn.peer, stream);
+          const activeStreams = [
+            { stream: screenStreamRef.current, type: "screen" },
+            { stream: cameraStreamRef.current, type: "camera" },
+          ].filter((item) => Boolean(item.stream));
+
+          activeStreams.forEach(({ stream, type }) => {
+            const call = peer.call(dataConn.peer, stream, { metadata: { type } });
             call?.on("stream", (remoteStream) => {
               setRemoteMedia((current) => ({
                 ...current,
                 [dataConn.peer]: {
                   ...current[dataConn.peer],
-                  screenStream: remoteStream,
-                  cameraStream: remoteStream,
+                  screenStream: type === "screen" ? remoteStream : current[dataConn.peer]?.screenStream,
+                  cameraStream: type === "camera" ? remoteStream : current[dataConn.peer]?.cameraStream,
                 },
               }));
             });
@@ -670,43 +676,29 @@ function MovieRoom({ session, onLeave }) {
           const localStreams = [cameraStreamRef.current, screenStreamRef.current].filter(Boolean);
           mediaCall.answer(localStreams[0] || undefined);
           mediaCall.on("stream", (remoteStream) => {
+            const isScreen = mediaCall.metadata?.type === "screen" || remoteStream.getVideoTracks().length > 0;
             setRemoteMedia((current) => ({
               ...current,
               [mediaCall.peer]: {
                 ...current[mediaCall.peer],
-                screenStream: remoteStream,
-                cameraStream: remoteStream,
+                screenStream: isScreen ? remoteStream : current[mediaCall.peer]?.screenStream,
+                cameraStream: isScreen ? current[mediaCall.peer]?.cameraStream : remoteStream,
               },
             }));
           });
         });
 
         peer.on("error", (err) => {
-          if (asHost && err.type === "unavailable-id") {
-            peer.destroy();
-            // Host ID taken by dead ghost session, create fresh session
-            const freshHostId = `philos-host-${cleanCode}-${Date.now().toString(36).substring(4)}`;
-            const freshPeer = new Peer(freshHostId, {
-              host: "0.peerjs.com",
-              port: 443,
-              path: "/",
-              secure: true,
-              config: { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] },
-            });
-            peerRef.current = freshPeer;
-            freshPeer.on("open", (id) => {
-              setConnected(true);
-              setParticipants([{ id, username: session.username }]);
-            });
-            freshPeer.on("connection", (dataConn) => setupDataConnection(dataConn));
+          if (!isHost && err.type === "peer-unavailable") {
+            showToast("Host is not online in this room yet.", "error");
           } else {
-            console.warn("PeerJS connection note:", err);
+            console.warn("PeerJS note:", err);
             setConnected(true);
           }
         });
       };
 
-      initPeer(true);
+      initPeer();
     }
 
     return () => {
