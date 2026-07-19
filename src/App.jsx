@@ -46,8 +46,6 @@ const GLOBAL_ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
   { urls: "stun:stun2.l.google.com:19302" },
-  { urls: "stun:stun3.l.google.com:19302" },
-  { urls: "stun:stun4.l.google.com:19302" },
   { urls: "stun:openrelay.metered.ca:80" },
   { urls: "stun:openrelay.metered.ca:443" },
   {
@@ -62,11 +60,6 @@ const GLOBAL_ICE_SERVERS = [
   },
   {
     urls: "turn:openrelay.metered.ca:443?transport=tcp",
-    username: "openrelay",
-    credential: "openrelay",
-  },
-  {
-    urls: "turns:openrelay.metered.ca:443?transport=tcp",
     username: "openrelay",
     credential: "openrelay",
   },
@@ -449,22 +442,12 @@ function MovieRoom({ session, onLeave }) {
     const pc = new RTCPeerConnection({
       iceServers: GLOBAL_ICE_SERVERS,
     });
-    const peer = { pc, remoteStreamTypes: {}, iceQueue: [] };
+    const peer = { pc, remoteStreamTypes: {} };
     peersRef.current.set(peerId, peer);
     addLocalTracks(pc);
 
     pc.onicecandidate = (event) => {
-      if (!event.candidate) return;
-      const candidateJSON = typeof event.candidate.toJSON === "function" ? event.candidate.toJSON() : {
-        candidate: event.candidate.candidate,
-        sdpMid: event.candidate.sdpMid,
-        sdpMLineIndex: event.candidate.sdpMLineIndex,
-      };
-      if (socketRef.current) {
-        socketRef.current.emit("signal", { target: peerId, type: "candidate", candidate: candidateJSON });
-      } else if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ t: "signal", target: peerId, from: localIdRef.current, sigType: "candidate", candidate: candidateJSON }));
-      }
+      if (event.candidate) socketRef.current?.emit("signal", { target: peerId, type: "candidate", candidate: event.candidate });
     };
     pc.ontrack = (event) => {
       const stream = event.streams[0];
@@ -500,37 +483,49 @@ function MovieRoom({ session, onLeave }) {
     try {
       const offer = await peer.pc.createOffer();
       await peer.pc.setLocalDescription(offer);
-      if (socketRef.current) {
-        socketRef.current.emit("signal", {
-          target: peerId, type: "offer",
-          sdp: peer.pc.localDescription, streams: streamMeta(),
-        });
-      } else if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          t: "signal", target: peerId, from: localIdRef.current,
-          sigType: "offer", sdp: peer.pc.localDescription, streams: streamMeta(),
-        }));
-      }
+      socketRef.current?.emit("signal", {
+        target: peerId,
+        type: "offer",
+        sdp: peer.pc.localDescription,
+        streams: streamMeta(),
+      });
     } catch (error) {
       console.warn("Could not negotiate peer connection", error);
     }
   }, [addLocalTracks, createPeer, streamMeta]);
 
   const renegotiateAll = useCallback(() => {
-    peersRef.current.forEach((_peer, peerId) => makeOffer(peerId));
-  }, [makeOffer]);
+    if (socketRef.current) {
+      peersRef.current.forEach((_peer, peerId) => makeOffer(peerId));
+    } else if (peerRef.current) {
+      dataConnsRef.current.forEach((_conn, targetPeerId) => {
+        if (screenStreamRef.current) {
+          const call = peerRef.current.call(targetPeerId, screenStreamRef.current, { metadata: { type: "screen", isHost: session?.isHost !== false } });
+          call?.on("stream", (remoteStream) => {
+            setRemoteMedia((current) => ({
+              ...current,
+              [targetPeerId]: { ...current[targetPeerId], screenStream: remoteStream },
+            }));
+          });
+        }
+        if (cameraStreamRef.current) {
+          const call = peerRef.current.call(targetPeerId, cameraStreamRef.current, { metadata: { type: "camera", isHost: session?.isHost !== false } });
+          call?.on("stream", (remoteStream) => {
+            setRemoteMedia((current) => ({
+              ...current,
+              [targetPeerId]: { ...current[targetPeerId], cameraStream: remoteStream },
+            }));
+          });
+        }
+      });
+    }
+  }, [makeOffer, session?.isHost]);
 
   const peerRef = useRef(null);
   const dataConnsRef = useRef(new Map());
   const channelRef = useRef(null);
-  const wsRef = useRef(null);
-  const localIdRef = useRef(null);
-  const heartbeatRef = useRef(null);
 
   const broadcastServerless = useCallback((type, payload) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ t: "data", dtype: type, payload, from: localIdRef.current }));
-    }
     dataConnsRef.current.forEach((conn) => {
       if (conn.open) conn.send({ type, payload });
     });
@@ -579,12 +574,9 @@ function MovieRoom({ session, onLeave }) {
   }, [runCountdown, session.username, showToast]);
 
   const connectToPeer = useCallback((targetPeerId) => {
-    if (!peerRef.current || targetPeerId === peerRef.current.id) return;
-
-    if (!dataConnsRef.current.has(targetPeerId)) {
-      const conn = peerRef.current.connect(targetPeerId, { config: { iceServers: GLOBAL_ICE_SERVERS } });
-      setupDataConnection(conn);
-    }
+    if (!peerRef.current || targetPeerId === peerRef.current.id || dataConnsRef.current.has(targetPeerId)) return;
+    const conn = peerRef.current.connect(targetPeerId, { config: { iceServers: GLOBAL_ICE_SERVERS } });
+    setupDataConnection(conn);
 
     if (screenStreamRef.current) {
       const call = peerRef.current.call(targetPeerId, screenStreamRef.current, { metadata: { type: "screen", isHost: session?.isHost !== false }, config: { iceServers: GLOBAL_ICE_SERVERS } });
@@ -671,156 +663,147 @@ function MovieRoom({ session, onLeave }) {
         if (Object.keys(streams).length) peer.remoteStreamTypes = streams;
         try {
           if (type === "offer") {
-            await peer.pc.setRemoteDescription(new RTCSessionDescription(sdp));
+            await peer.pc.setRemoteDescription(sdp);
             addLocalTracks(peer.pc);
             const answer = await peer.pc.createAnswer();
             await peer.pc.setLocalDescription(answer);
-
-            if (peer.iceQueue) {
-              while (peer.iceQueue.length > 0) {
-                const cand = peer.iceQueue.shift();
-                await peer.pc.addIceCandidate(cand).catch(e => {});
-              }
-            }
-
             socket.emit("signal", { target: from, type: "answer", sdp: peer.pc.localDescription, streams: streamMeta() });
           } else if (type === "answer") {
-            await peer.pc.setRemoteDescription(new RTCSessionDescription(sdp));
-
-            if (peer.iceQueue) {
-              while (peer.iceQueue.length > 0) {
-                const cand = peer.iceQueue.shift();
-                await peer.pc.addIceCandidate(cand).catch(e => {});
-              }
-            }
+            await peer.pc.setRemoteDescription(sdp);
           } else if (type === "candidate" && candidate) {
-            const cand = new RTCIceCandidate(candidate);
-            if (peer.pc.remoteDescription) {
-              await peer.pc.addIceCandidate(cand);
-            } else {
-              if (!peer.iceQueue) peer.iceQueue = [];
-              peer.iceQueue.push(cand);
-            }
+            await peer.pc.addIceCandidate(candidate);
           }
         } catch (error) {
           console.warn("WebRTC signal error", error);
         }
       });
     } else {
-      // -----------------------------------------------------------------
-      // SERVERLESS MODE — Keyless PeerJS P2P (Zero-Config Cross-Device)
-      // -----------------------------------------------------------------
+      // -------------------------------------------------------------
+      // STANDALONE SERVERLESS PEERJS MODE (Cross-Device P2P WebRTC)
+      // -------------------------------------------------------------
       const cleanCode = cleanRoomCode(session.roomCode);
       const hostPeerId = `philos-host-${cleanCode}`;
       const isHost = session.isHost !== false;
-      const myPeerId = isHost
-        ? hostPeerId
-        : `philos-guest-${cleanCode}-${Math.random().toString(36).substring(2, 7)}`;
-      localIdRef.current = myPeerId;
 
-      const peer = new Peer(myPeerId, {
-        host: "0.peerjs.com",
-        port: 443,
-        path: "/",
-        secure: true,
-        config: {
-          iceServers: GLOBAL_ICE_SERVERS,
-        },
-      });
-      peerRef.current = peer;
-
-      peer.on("open", (id) => {
-        setConnected(true);
-        const selfUser = { id, username: session.username };
-        setParticipants([selfUser]);
-        setMessages([{
-          id: "welcome",
-          system: true,
-          text: isHost
-            ? `Welcome to ${session.roomCode}. Share your screen when everyone's settled in.`
-            : `Joined room ${session.roomCode}. Waiting for the host to present.`,
-        }]);
-
-        if (!isHost) {
-          connectToPeer(hostPeerId);
-        }
-      });
-
-      peer.on("connection", (dataConn) => {
-        setupDataConnection(dataConn);
-        if (screenStreamRef.current) {
-          const call = peer.call(dataConn.peer, screenStreamRef.current, { metadata: { type: "screen", isHost } });
-          call?.on("stream", (remoteStream) => {
-            setRemoteMedia((current) => ({
-              ...current,
-              [dataConn.peer]: { ...current[dataConn.peer], screenStream: remoteStream },
-            }));
-          });
-        }
-        if (cameraStreamRef.current) {
-          const call = peer.call(dataConn.peer, cameraStreamRef.current, { metadata: { type: "camera", isHost } });
-          call?.on("stream", (remoteStream) => {
-            setRemoteMedia((current) => ({
-              ...current,
-              [dataConn.peer]: { ...current[dataConn.peer], cameraStream: remoteStream },
-            }));
-          });
-        }
-      });
-
-      peer.on("call", (mediaCall) => {
-        const localStreams = [screenStreamRef.current, cameraStreamRef.current].filter(Boolean);
-        if (localStreams.length > 0) {
-          mediaCall.answer(localStreams[0]);
-        } else {
-          mediaCall.answer();
-        }
-        mediaCall.on("stream", (remoteStream) => {
-          const isScreenCall = mediaCall.metadata?.type === "screen";
-          const fromHost = mediaCall.metadata?.isHost || mediaCall.peer === hostPeerId;
-
-          setRemoteMedia((current) => {
-            const peerMedia = current[mediaCall.peer] || {};
-            if (isScreenCall && fromHost) {
-              return {
-                ...current,
-                [mediaCall.peer]: { ...peerMedia, screenStream: remoteStream },
-                [hostPeerId]: { ...current[hostPeerId], screenStream: remoteStream },
-              };
-            } else {
-              return {
-                ...current,
-                [mediaCall.peer]: { ...peerMedia, cameraStream: remoteStream },
-              };
-            }
-          });
+      const initPeer = () => {
+        const myPeerId = isHost ? hostPeerId : `philos-guest-${cleanCode}-${Math.random().toString(36).substring(2, 7)}`;
+        const peer = new Peer(myPeerId, {
+          host: "0.peerjs.com",
+          port: 443,
+          path: "/",
+          secure: true,
+          config: {
+            iceServers: GLOBAL_ICE_SERVERS,
+          },
         });
-      });
+        peerRef.current = peer;
 
-      peer.on("error", (err) => {
-        if (!isHost && err.type === "peer-unavailable") {
-          // Host not in room yet, guest retry loop will keep attempting
-        } else {
-          console.warn("PeerJS note:", err);
+        peer.on("open", (id) => {
           setConnected(true);
-        }
-      });
+          const selfUser = { id, username: session.username };
+          setParticipants([selfUser]);
+          setMessages([{
+            id: "welcome",
+            system: true,
+            text: isHost
+              ? `Welcome to ${session.roomCode}. Share your screen when everyone’s settled in.`
+              : `Joined room ${session.roomCode}. Waiting for the host to present.`,
+          }]);
 
-      // Guest connection retry loop until host is reached
-      let retryTimer = null;
-      if (!isHost) {
-        retryTimer = setInterval(() => {
-          if (peerRef.current && !peerRef.current.destroyed && !dataConnsRef.current.has(hostPeerId)) {
+          if (!isHost) {
             connectToPeer(hostPeerId);
           }
-        }, 2000);
-      }
+        });
 
-      heartbeatRef.current = retryTimer;
+        peer.on("connection", (dataConn) => {
+          setupDataConnection(dataConn);
+          if (screenStreamRef.current) {
+            const call = peer.call(dataConn.peer, screenStreamRef.current, { metadata: { type: "screen", isHost } });
+            call?.on("stream", (remoteStream) => {
+              setRemoteMedia((current) => ({
+                ...current,
+                [dataConn.peer]: { ...current[dataConn.peer], screenStream: remoteStream },
+              }));
+            });
+          }
+          if (cameraStreamRef.current) {
+            const call = peer.call(dataConn.peer, cameraStreamRef.current, { metadata: { type: "camera", isHost } });
+            call?.on("stream", (remoteStream) => {
+              setRemoteMedia((current) => ({
+                ...current,
+                [dataConn.peer]: { ...current[dataConn.peer], cameraStream: remoteStream },
+              }));
+            });
+          }
+        });
+
+        peer.on("call", (mediaCall) => {
+          const localStreams = [screenStreamRef.current, cameraStreamRef.current].filter(Boolean);
+          if (localStreams.length > 0) {
+            mediaCall.answer(localStreams[0]);
+          } else {
+            mediaCall.answer();
+          }
+          mediaCall.on("stream", (remoteStream) => {
+            const isScreenCall = mediaCall.metadata?.type === "screen";
+            const fromHost = mediaCall.metadata?.isHost || mediaCall.peer === hostPeerId;
+
+            setRemoteMedia((current) => {
+              const peerMedia = current[mediaCall.peer] || {};
+              if (isScreenCall && fromHost) {
+                return {
+                  ...current,
+                  [mediaCall.peer]: { ...peerMedia, screenStream: remoteStream },
+                  [hostPeerId]: { ...current[hostPeerId], screenStream: remoteStream },
+                };
+              } else {
+                return {
+                  ...current,
+                  [mediaCall.peer]: { ...peerMedia, cameraStream: remoteStream },
+                };
+              }
+            });
+          });
+        });
+
+        peer.on("error", (err) => {
+          if (!isHost && err.type === "peer-unavailable") {
+            showToast("Host is not online in this room yet.", "error");
+          } else {
+            console.warn("PeerJS note:", err);
+            setConnected(true);
+          }
+        });
+      };
+
+      initPeer();
+    }
+
+    // Auto-retry connection loop for Guest over 4G LTE cellular data
+    let retryTimer = null;
+    if (session && !session.isHost) {
+      const cleanCode = cleanRoomCode(session.roomCode);
+      const hostPeerId = `philos-host-${cleanCode}`;
+      retryTimer = setInterval(() => {
+        if (peerRef.current && !peerRef.current.destroyed && !dataConnsRef.current.has(hostPeerId)) {
+          connectToPeer(hostPeerId);
+        }
+      }, 2500);
+    }
+
+    // Host Stream Keep-Alive Ping for 4G LTE viewers
+    let pingTimer = null;
+    if (session && session.isHost) {
+      pingTimer = setInterval(() => {
+        if (screenStreamRef.current || cameraStreamRef.current) {
+          renegotiateAll();
+        }
+      }, 4000);
     }
 
     return () => {
-      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+      if (retryTimer) clearInterval(retryTimer);
+      if (pingTimer) clearInterval(pingTimer);
       clearTimeout(toastTimer.current);
       countdownTimersRef.current.forEach((timer) => {
         clearTimeout(timer);
@@ -828,13 +811,13 @@ function MovieRoom({ session, onLeave }) {
       });
       socketRef.current?.disconnect();
       peerRef.current?.destroy();
-      wsRef.current?.close();
+      channelRef.current?.close();
       peersRef.current.forEach(({ pc }) => pc.close());
       peersRef.current.clear();
       cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
       screenStreamRef.current?.getTracks().forEach((track) => track.stop());
     };
-  }, [addLocalTracks, createPeer, makeOffer, onLeave, runCountdown, session, showToast, streamMeta]);
+  }, [addLocalTracks, connectToPeer, createPeer, makeOffer, onLeave, runCountdown, session, setupDataConnection, showToast, streamMeta]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -958,7 +941,7 @@ function MovieRoom({ session, onLeave }) {
     } else {
       const payload = {
         id: `msg-${Date.now()}`,
-        userId: localIdRef.current || peerRef.current?.id || "self",
+        userId: peerRef.current?.id || "self",
         username: session.username,
         text,
         sentAt: new Date().toISOString(),
@@ -993,8 +976,8 @@ function MovieRoom({ session, onLeave }) {
         id: `item-${Date.now()}`,
         title,
         addedBy: session.username,
-        addedById: localIdRef.current || peerRef.current?.id || "self",
-        voters: [localIdRef.current || peerRef.current?.id || "self"],
+        addedById: peerRef.current?.id || "self",
+        voters: [peerRef.current?.id || "self"],
         votes: 1,
       };
       const nextQueue = [...queue, newItem];
@@ -1042,7 +1025,7 @@ function MovieRoom({ session, onLeave }) {
     }
   };
 
-  const myId = localIdRef.current || peerRef.current?.id || socketRef.current?.id;
+  const myId = peerRef.current?.id || socketRef.current?.id;
   const self = participants.find((user) => user.id === myId) || { id: myId || "self", username: session.username };
   const others = participants.filter((user) => user.id !== self.id && user.id !== myId);
   const cleanCode = cleanRoomCode(session.roomCode);
