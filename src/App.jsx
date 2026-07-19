@@ -587,6 +587,7 @@ function MovieRoom({ session, onLeave }) {
   const peerRef = useRef(null);
   const dataConnsRef = useRef(new Map());
   const channelRef = useRef(null);
+  const iceServersRef = useRef(GLOBAL_ICE_SERVERS);
 
   const broadcastServerless = useCallback((type, payload) => {
     dataConnsRef.current.forEach((conn) => {
@@ -638,11 +639,11 @@ function MovieRoom({ session, onLeave }) {
 
   const connectToPeer = useCallback((targetPeerId) => {
     if (!peerRef.current || targetPeerId === peerRef.current.id || dataConnsRef.current.has(targetPeerId)) return;
-    const conn = peerRef.current.connect(targetPeerId, { config: { iceServers: GLOBAL_ICE_SERVERS } });
+    const conn = peerRef.current.connect(targetPeerId, { config: { iceServers: iceServersRef.current } });
     setupDataConnection(conn);
 
     if (screenStreamRef.current) {
-      const call = peerRef.current.call(targetPeerId, screenStreamRef.current, { metadata: { type: "screen", isHost: session?.isHost !== false }, config: { iceServers: GLOBAL_ICE_SERVERS } });
+      const call = peerRef.current.call(targetPeerId, screenStreamRef.current, { metadata: { type: "screen", isHost: session?.isHost !== false }, config: { iceServers: iceServersRef.current } });
       call?.on("stream", (remoteStream) => {
         setRemoteMedia((current) => ({
           ...current,
@@ -651,7 +652,7 @@ function MovieRoom({ session, onLeave }) {
       });
     }
     if (cameraStreamRef.current) {
-      const call = peerRef.current.call(targetPeerId, cameraStreamRef.current, { metadata: { type: "camera", isHost: session?.isHost !== false }, config: { iceServers: GLOBAL_ICE_SERVERS } });
+      const call = peerRef.current.call(targetPeerId, cameraStreamRef.current, { metadata: { type: "camera", isHost: session?.isHost !== false }, config: { iceServers: iceServersRef.current } });
       call?.on("stream", (remoteStream) => {
         setRemoteMedia((current) => ({
           ...current,
@@ -750,6 +751,7 @@ function MovieRoom({ session, onLeave }) {
 
       const initPeer = async () => {
         const iceServers = await getActiveIceServers(session?.meteredDomain, session?.meteredKey);
+        iceServersRef.current = iceServers;
         const myPeerId = isHost ? hostPeerId : `philos-guest-${cleanCode}-${Math.random().toString(36).substring(2, 7)}`;
         const peer = new Peer(myPeerId, {
           host: "0.peerjs.com",
@@ -832,7 +834,7 @@ function MovieRoom({ session, onLeave }) {
 
         peer.on("error", (err) => {
           if (!isHost && err.type === "peer-unavailable") {
-            showToast("Host is not online in this room yet.", "error");
+            // Silence toast while retry loop connects to host
           } else {
             console.warn("PeerJS note:", err);
             setConnected(true);
