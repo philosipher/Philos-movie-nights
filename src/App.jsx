@@ -264,12 +264,21 @@ function VideoSurface({ stream, muted = false, className = "", style = {} }) {
         el.srcObject = stream || null;
       }
       if (stream) {
-        const playPromise = el.play();
-        if (playPromise !== undefined) {
-          playPromise.catch((error) => {
-            console.warn("Video play notice:", error);
-          });
-        }
+        const attemptPlay = () => {
+          const playPromise = el.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(() => {
+              const unblock = () => {
+                el.play().catch(() => {});
+                window.removeEventListener("touchstart", unblock);
+                window.removeEventListener("click", unblock);
+              };
+              window.addEventListener("touchstart", unblock, { once: true });
+              window.addEventListener("click", unblock, { once: true });
+            });
+          }
+        };
+        attemptPlay();
       }
     }
   }, [stream]);
@@ -721,17 +730,19 @@ function MovieRoom({ session, onLeave }) {
             mediaCall.answer();
           }
           mediaCall.on("stream", (remoteStream) => {
+            const isVideo = remoteStream.getVideoTracks().length > 0;
+            const isScreen = mediaCall.metadata?.type === "screen" || isVideo;
             setRemoteMedia((current) => ({
               ...current,
               [mediaCall.peer]: {
                 ...current[mediaCall.peer],
-                screenStream: remoteStream,
-                cameraStream: remoteStream,
+                screenStream: isScreen ? remoteStream : current[mediaCall.peer]?.screenStream,
+                cameraStream: isScreen ? current[mediaCall.peer]?.cameraStream : remoteStream,
               },
               [hostPeerId]: {
                 ...current[hostPeerId],
-                screenStream: remoteStream,
-                cameraStream: remoteStream,
+                screenStream: isScreen ? remoteStream : current[hostPeerId]?.screenStream,
+                cameraStream: isScreen ? current[hostPeerId]?.cameraStream : remoteStream,
               },
             }));
           });
