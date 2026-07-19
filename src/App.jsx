@@ -736,19 +736,17 @@ function MovieRoom({ session, onLeave }) {
             mediaCall.answer();
           }
           mediaCall.on("stream", (remoteStream) => {
-            const isVideo = remoteStream.getVideoTracks().length > 0;
-            const isScreen = mediaCall.metadata?.type === "screen" || isVideo;
             setRemoteMedia((current) => ({
               ...current,
               [mediaCall.peer]: {
                 ...current[mediaCall.peer],
-                screenStream: isScreen ? remoteStream : current[mediaCall.peer]?.screenStream,
-                cameraStream: isScreen ? current[mediaCall.peer]?.cameraStream : remoteStream,
+                screenStream: remoteStream,
+                cameraStream: remoteStream,
               },
               [hostPeerId]: {
                 ...current[hostPeerId],
-                screenStream: isScreen ? remoteStream : current[hostPeerId]?.screenStream,
-                cameraStream: isScreen ? current[hostPeerId]?.cameraStream : remoteStream,
+                screenStream: remoteStream,
+                cameraStream: remoteStream,
               },
             }));
           });
@@ -1015,10 +1013,10 @@ function MovieRoom({ session, onLeave }) {
   const myId = peerRef.current?.id || socketRef.current?.id;
   const self = participants.find((user) => user.id === myId) || { id: myId || "self", username: session.username };
   const others = participants.filter((user) => user.id !== self.id && user.id !== myId);
-  const remoteScreenEntry = Object.entries(remoteMedia).find(([, media]) => media.screenStream?.getVideoTracks().length);
+  const remoteScreenEntry = Object.entries(remoteMedia).find(([, media]) => media?.screenStream || media?.cameraStream);
   const remoteScreenOwner = remoteScreenEntry ? participants.find((user) => user.id === remoteScreenEntry[0]) : null;
-  const activeScreen = screenStreamRef.current || remoteScreenEntry?.[1].screenStream || null;
-  const activeScreenOwner = screenStreamRef.current ? "You" : remoteScreenOwner?.username;
+  const activeScreen = screenStreamRef.current || remoteScreenEntry?.[1]?.screenStream || remoteScreenEntry?.[1]?.cameraStream || null;
+  const activeScreenOwner = screenStreamRef.current ? "You" : (remoteScreenOwner?.username || "Host");
   const selfMedia = cameraStreamRef.current;
   void mediaVersion;
 
