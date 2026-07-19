@@ -708,150 +708,115 @@ function MovieRoom({ session, onLeave }) {
       });
     } else {
       // -----------------------------------------------------------------
-      // SERVERLESS MODE — Pure WebRTC + PieSocket WSS Signaling
-      // No PeerJS broker (0.peerjs.com) dependency. ALL signaling goes
-      // through PieSocket WSS on port 443, which is standard HTTPS and
-      // is NEVER blocked by mobile carriers (4G LTE / 5G CGNAT).
-      // Media flows through native RTCPeerConnection with TURN relay.
+      // SERVERLESS MODE — Keyless PeerJS P2P (Zero-Config Cross-Device)
       // -----------------------------------------------------------------
       const cleanCode = cleanRoomCode(session.roomCode);
+      const hostPeerId = `philos-host-${cleanCode}`;
       const isHost = session.isHost !== false;
-      const myId = isHost
-        ? `philos-host-${cleanCode}`
-        : `philos-guest-${cleanCode}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
-      localIdRef.current = myId;
+      const myPeerId = isHost
+        ? hostPeerId
+        : `philos-guest-${cleanCode}-${Math.random().toString(36).substring(2, 7)}`;
+      localIdRef.current = myPeerId;
 
-      const selfUser = { id: myId, username: session.username };
-      setConnected(true);
-      setParticipants([selfUser]);
-      setMessages([{
-        id: "welcome",
-        system: true,
-        text: isHost
-          ? `Welcome to ${session.roomCode}. Share your screen when everyone's settled in.`
-          : `Joined room ${session.roomCode}. Waiting for the host to present.`,
-      }]);
+      const peer = new Peer(myPeerId, {
+        host: "0.peerjs.com",
+        port: 443,
+        path: "/",
+        secure: true,
+        config: {
+          iceServers: GLOBAL_ICE_SERVERS,
+        },
+      });
+      peerRef.current = peer;
 
-      // PieSocket WSS — the ONLY signaling + data messaging channel
-      const wsUrl = `wss://free.piesocket.com/v3/philos_${cleanCode}?api_key=VC44WVtGJvxOtBMLQwipBWKmI88FUAVaBc6mfCrQ&notify_self=0`;
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
+      peer.on("open", (id) => {
+        setConnected(true);
+        const selfUser = { id, username: session.username };
+        setParticipants([selfUser]);
+        setMessages([{
+          id: "welcome",
+          system: true,
+          text: isHost
+            ? `Welcome to ${session.roomCode}. Share your screen when everyone's settled in.`
+            : `Joined room ${session.roomCode}. Waiting for the host to present.`,
+        }]);
 
-      const knownPeers = new Set();
-
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ t: "presence", user: selfUser }));
-      };
-
-      ws.onmessage = (evt) => {
-        let data;
-        try { data = JSON.parse(evt.data); } catch { return; }
-
-        // --- Presence Discovery ---
-        if (data.t === "presence" && data.user && data.user.id !== myId) {
-          const remote = data.user;
-          setParticipants((cur) => cur.some((u) => u.id === remote.id) ? cur : [...cur, remote]);
-          // Acknowledge so the remote side discovers us too
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ t: "presence-ack", user: selfUser }));
-          }
-          if (!knownPeers.has(remote.id)) {
-            knownPeers.add(remote.id);
-            setMessages((cur) => [...cur, { id: `join-${remote.id}`, system: true, text: `${remote.username} grabbed a seat.` }]);
-            showToast(`${remote.username} joined the room`, "success");
-            // Polite negotiation: lexically higher ID creates the offer to prevent ofer glare
-            if (myId > remote.id) makeOffer(remote.id);
-          }
+        if (!isHost) {
+          connectToPeer(hostPeerId);
         }
+      });
 
-        if (data.t === "presence-ack" && data.user && data.user.id !== myId) {
-          const remote = data.user;
-          setParticipants((cur) => cur.some((u) => u.id === remote.id) ? cur : [...cur, remote]);
-          if (!knownPeers.has(remote.id)) {
-            knownPeers.add(remote.id);
-            setMessages((cur) => [...cur, { id: `join-${remote.id}`, system: true, text: `${remote.username} grabbed a seat.` }]);
-            showToast(`${remote.username} joined the room`, "success");
-            if (myId > remote.id) makeOffer(remote.id);
-          }
+      peer.on("connection", (dataConn) => {
+        setupDataConnection(dataConn);
+        if (screenStreamRef.current) {
+          const call = peer.call(dataConn.peer, screenStreamRef.current, { metadata: { type: "screen", isHost } });
+          call?.on("stream", (remoteStream) => {
+            setRemoteMedia((current) => ({
+              ...current,
+              [dataConn.peer]: { ...current[dataConn.peer], screenStream: remoteStream },
+            }));
+          });
         }
+        if (cameraStreamRef.current) {
+          const call = peer.call(dataConn.peer, cameraStreamRef.current, { metadata: { type: "camera", isHost } });
+          call?.on("stream", (remoteStream) => {
+            setRemoteMedia((current) => ({
+              ...current,
+              [dataConn.peer]: { ...current[dataConn.peer], cameraStream: remoteStream },
+            }));
+          });
+        }
+      });
 
-        // --- WebRTC Signaling (SDP offer / answer / ICE candidate) ---
-        if (data.t === "signal" && data.target === myId && data.from) {
-          (async () => {
-            const peer = createPeer(data.from);
-            if (data.streams && Object.keys(data.streams).length) {
-              peer.remoteStreamTypes = data.streams;
+      peer.on("call", (mediaCall) => {
+        const localStreams = [screenStreamRef.current, cameraStreamRef.current].filter(Boolean);
+        if (localStreams.length > 0) {
+          mediaCall.answer(localStreams[0]);
+        } else {
+          mediaCall.answer();
+        }
+        mediaCall.on("stream", (remoteStream) => {
+          const isScreenCall = mediaCall.metadata?.type === "screen";
+          const fromHost = mediaCall.metadata?.isHost || mediaCall.peer === hostPeerId;
+
+          setRemoteMedia((current) => {
+            const peerMedia = current[mediaCall.peer] || {};
+            if (isScreenCall && fromHost) {
+              return {
+                ...current,
+                [mediaCall.peer]: { ...peerMedia, screenStream: remoteStream },
+                [hostPeerId]: { ...current[hostPeerId], screenStream: remoteStream },
+              };
+            } else {
+              return {
+                ...current,
+                [mediaCall.peer]: { ...peerMedia, cameraStream: remoteStream },
+              };
             }
-            try {
-              if (data.sigType === "offer") {
-                await peer.pc.setRemoteDescription(data.sdp);
-                addLocalTracks(peer.pc);
-                const answer = await peer.pc.createAnswer();
-                await peer.pc.setLocalDescription(answer);
+          });
+        });
+      });
 
-                if (peer.iceQueue) {
-                  while (peer.iceQueue.length > 0) {
-                    const cand = peer.iceQueue.shift();
-                    await peer.pc.addIceCandidate(cand).catch(e => {});
-                  }
-                }
-
-                if (ws.readyState === WebSocket.OPEN) {
-                  ws.send(JSON.stringify({
-                    t: "signal", target: data.from, from: myId, sigType: "answer",
-                    sdp: peer.pc.localDescription, streams: streamMeta(),
-                  }));
-                }
-              } else if (data.sigType === "answer") {
-                await peer.pc.setRemoteDescription(data.sdp);
-
-                if (peer.iceQueue) {
-                  while (peer.iceQueue.length > 0) {
-                    const cand = peer.iceQueue.shift();
-                    await peer.pc.addIceCandidate(cand).catch(e => {});
-                  }
-                }
-              } else if (data.sigType === "candidate" && data.candidate) {
-                const cand = data.candidate;
-                if (peer.pc.remoteDescription) {
-                  await peer.pc.addIceCandidate(cand);
-                } else {
-                  if (!peer.iceQueue) peer.iceQueue = [];
-                  peer.iceQueue.push(cand);
-                }
-              }
-            } catch (err) {
-              console.warn("WebRTC signal error:", err);
-            }
-          })();
+      peer.on("error", (err) => {
+        if (!isHost && err.type === "peer-unavailable") {
+          // Host not in room yet, guest retry loop will keep attempting
+        } else {
+          console.warn("PeerJS note:", err);
+          setConnected(true);
         }
+      });
 
-        // --- Data Messages (chat, reactions, queue, countdown) ---
-        if (data.t === "data" && data.from !== myId) {
-          if (data.dtype === "chat-message") {
-            setMessages((cur) => [...cur, data.payload]);
-          } else if (data.dtype === "reaction") {
-            const reaction = data.payload;
-            setReactions((cur) => [...cur, reaction]);
-            setTimeout(() => setReactions((cur) => cur.filter((r) => r.id !== reaction.id)), 2600);
-          } else if (data.dtype === "room-state") {
-            setQueue(data.payload.queue || []);
-            setNowPlaying(data.payload.nowPlaying || null);
-          } else if (data.dtype === "countdown-start") {
-            runCountdown(data.payload);
+      // Guest connection retry loop until host is reached
+      let retryTimer = null;
+      if (!isHost) {
+        retryTimer = setInterval(() => {
+          if (peerRef.current && !peerRef.current.destroyed && !dataConnsRef.current.has(hostPeerId)) {
+            connectToPeer(hostPeerId);
           }
-        }
-      };
+        }, 2000);
+      }
 
-      ws.onclose = () => setConnected(false);
-      ws.onerror = () => console.warn("WSS connection error");
-
-      // Re-announce presence periodically so late joiners discover existing peers
-      heartbeatRef.current = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ t: "presence", user: selfUser }));
-        }
-      }, 8000);
+      heartbeatRef.current = retryTimer;
     }
 
     return () => {
