@@ -575,9 +575,12 @@ function MovieRoom({ session, onLeave }) {
   }, [runCountdown, session.username, showToast]);
 
   const connectToPeer = useCallback((targetPeerId) => {
-    if (!peerRef.current || targetPeerId === peerRef.current.id || dataConnsRef.current.has(targetPeerId)) return;
-    const conn = peerRef.current.connect(targetPeerId, { config: { iceServers: GLOBAL_ICE_SERVERS } });
-    setupDataConnection(conn);
+    if (!peerRef.current || targetPeerId === peerRef.current.id) return;
+
+    if (!dataConnsRef.current.has(targetPeerId)) {
+      const conn = peerRef.current.connect(targetPeerId, { config: { iceServers: GLOBAL_ICE_SERVERS } });
+      setupDataConnection(conn);
+    }
 
     if (screenStreamRef.current) {
       const call = peerRef.current.call(targetPeerId, screenStreamRef.current, { metadata: { type: "screen", isHost: session?.isHost !== false }, config: { iceServers: GLOBAL_ICE_SERVERS } });
