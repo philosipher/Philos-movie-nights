@@ -538,8 +538,14 @@ function MovieRoom({ session, onLeave }) {
       if (data.type === "user-info") {
         const user = data.payload;
         setParticipants((current) => current.some((item) => item.id === user.id) ? current : [...current, user]);
+        if (peerRef.current?.id) {
+          conn.send({ type: "user-info-reply", payload: { id: peerRef.current.id, username: session.username } });
+        }
         setMessages((current) => [...current, { id: `join-${user.id}`, system: true, text: `${user.username} grabbed a seat.` }]);
         showToast(`${user.username} joined the room`, "success");
+      } else if (data.type === "user-info-reply") {
+        const user = data.payload;
+        setParticipants((current) => current.some((item) => item.id === user.id) ? current : [...current, user]);
       } else if (data.type === "chat-message") {
         setMessages((current) => [...current, data.payload]);
       } else if (data.type === "reaction") {
