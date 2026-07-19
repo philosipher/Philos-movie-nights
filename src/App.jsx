@@ -42,6 +42,29 @@ import {
 const REACTIONS = ["🍿", "😂", "😱", "❤️", "👏"];
 const AVATAR_COLORS = ["#ef6d5b", "#7c8ff5", "#56b49b", "#d991d0", "#e6a84b", "#8d72db"];
 
+const GLOBAL_ICE_SERVERS = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun2.l.google.com:19302" },
+  { urls: "stun:openrelay.metered.ca:80" },
+  { urls: "stun:openrelay.metered.ca:443" },
+  {
+    urls: "turn:openrelay.metered.ca:80",
+    username: "openrelay",
+    credential: "openrelay",
+  },
+  {
+    urls: "turn:openrelay.metered.ca:443",
+    username: "openrelay",
+    credential: "openrelay",
+  },
+  {
+    urls: "turn:openrelay.metered.ca:443?transport=tcp",
+    username: "openrelay",
+    credential: "openrelay",
+  },
+];
+
 function safeGetStorage(storageType, key, fallback = "") {
   try {
     const store = storageType === "session" ? sessionStorage : localStorage;
@@ -384,10 +407,7 @@ function MovieRoom({ session, onLeave }) {
   const createPeer = useCallback((peerId) => {
     if (peersRef.current.has(peerId)) return peersRef.current.get(peerId);
     const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-      ],
+      iceServers: GLOBAL_ICE_SERVERS,
     });
     const peer = { pc, remoteStreamTypes: {} };
     peersRef.current.set(peerId, peer);
@@ -625,10 +645,7 @@ function MovieRoom({ session, onLeave }) {
           path: "/",
           secure: true,
           config: {
-            iceServers: [
-              { urls: "stun:stun.l.google.com:19302" },
-              { urls: "stun:stun1.l.google.com:19302" },
-            ],
+            iceServers: GLOBAL_ICE_SERVERS,
           },
         });
         peerRef.current = peer;
