@@ -9,9 +9,32 @@
       content="Philos Movie Nights — share the screen, bring the snacks, and watch together."
     />
     <title>Philos Movie Nights — Watch together</title>
+    <script>
+      window.addEventListener('error', function(e) {
+        var div = document.getElementById('debug-error');
+        if (!div) {
+          div = document.createElement('div');
+          div.id = 'debug-error';
+          div.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:#b90009;color:#fff;padding:16px;font-family:monospace;font-size:13px;word-break:break-all;box-shadow:0 10px 30px rgba(0,0,0,0.5);';
+          document.body.appendChild(div);
+        }
+        div.innerHTML = '<strong>App Error:</strong> ' + (e.message || e.error || e) + '<br><small>' + (e.filename || '') + ':' + (e.lineno || '') + '</small>';
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        var div = document.getElementById('debug-error');
+        if (!div) {
+          div = document.createElement('div');
+          div.id = 'debug-error';
+          div.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:#b90009;color:#fff;padding:16px;font-family:monospace;font-size:13px;word-break:break-all;box-shadow:0 10px 30px rgba(0,0,0,0.5);';
+          document.body.appendChild(div);
+        }
+        div.innerHTML = '<strong>Unhandled Promise Rejection:</strong> ' + (e.reason ? (e.reason.message || e.reason) : e);
+      });
+    </script>
+    <script type="module" crossorigin src="/assets/index-2O_Ig4w8.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BAatsPTS.css">
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
