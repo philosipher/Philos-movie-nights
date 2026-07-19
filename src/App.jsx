@@ -761,7 +761,31 @@ function MovieRoom({ session, onLeave }) {
       initPeer();
     }
 
+    // Auto-retry connection loop for Guest over 4G LTE cellular data
+    let retryTimer = null;
+    if (session && !session.isHost) {
+      const cleanCode = cleanRoomCode(session.roomCode);
+      const hostPeerId = `philos-host-${cleanCode}`;
+      retryTimer = setInterval(() => {
+        if (peerRef.current && !peerRef.current.destroyed && !dataConnsRef.current.has(hostPeerId)) {
+          connectToPeer(hostPeerId);
+        }
+      }, 2500);
+    }
+
+    // Host Stream Keep-Alive Ping for 4G LTE viewers
+    let pingTimer = null;
+    if (session && session.isHost) {
+      pingTimer = setInterval(() => {
+        if (screenStreamRef.current || cameraStreamRef.current) {
+          renegotiateAll();
+        }
+      }, 4000);
+    }
+
     return () => {
+      if (retryTimer) clearInterval(retryTimer);
+      if (pingTimer) clearInterval(pingTimer);
       clearTimeout(toastTimer.current);
       countdownTimersRef.current.forEach((timer) => {
         clearTimeout(timer);
