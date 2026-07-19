@@ -65,6 +65,25 @@ const GLOBAL_ICE_SERVERS = [
   },
 ];
 
+async function getActiveIceServers(domain, key) {
+  const mDomain = domain || safeGetStorage("local", "philos-metered-domain", import.meta.env.VITE_METERED_DOMAIN || "");
+  const mKey = key || safeGetStorage("local", "philos-metered-key", import.meta.env.VITE_METERED_KEY || "");
+  if (mDomain && mKey) {
+    try {
+      const res = await fetch(`https://${mDomain.trim()}.metered.live/api/v1/turn/credentials?apiKey=${mKey.trim()}`);
+      if (res.ok) {
+        const servers = await res.json();
+        if (Array.isArray(servers) && servers.length > 0) {
+          return servers;
+        }
+      }
+    } catch {
+      // Fallback to static ice servers if metered fetch fails
+    }
+  }
+  return GLOBAL_ICE_SERVERS;
+}
+
 function safeGetStorage(storageType, key, fallback = "") {
   try {
     const store = storageType === "session" ? sessionStorage : localStorage;
@@ -135,6 +154,8 @@ function Landing({ onEnter }) {
   const [username, setUsername] = useState(() => safeGetStorage("session", "philos-movie-nights-name", ""));
   const [roomCode, setRoomCode] = useState(() => cleanRoomCode(queryRoom));
   const [serverUrl, setServerUrl] = useState(() => safeGetStorage("local", "philos-server-url", import.meta.env.VITE_SOCKET_URL || ""));
+  const [meteredDomain, setMeteredDomain] = useState(() => safeGetStorage("local", "philos-metered-domain", import.meta.env.VITE_METERED_DOMAIN || ""));
+  const [meteredKey, setMeteredKey] = useState(() => safeGetStorage("local", "philos-metered-key", import.meta.env.VITE_METERED_KEY || ""));
   const [showServerInput, setShowServerInput] = useState(false);
   const [mode, setMode] = useState(queryRoom ? "join" : "create");
   const [error, setError] = useState("");
@@ -153,7 +174,9 @@ function Landing({ onEnter }) {
     }
     safeSetStorage("session", "philos-movie-nights-name", name);
     safeSetStorage("local", "philos-server-url", serverUrl.trim());
-    onEnter({ username: name, roomCode: code, serverUrl: serverUrl.trim(), isHost: mode === "create" });
+    safeSetStorage("local", "philos-metered-domain", meteredDomain.trim());
+    safeSetStorage("local", "philos-metered-key", meteredKey.trim());
+    onEnter({ username: name, roomCode: code, serverUrl: serverUrl.trim(), meteredDomain: meteredDomain.trim(), meteredKey: meteredKey.trim(), isHost: mode === "create" });
   };
 
   return (
@@ -204,10 +227,20 @@ function Landing({ onEnter }) {
             )}
 
             {showServerInput && (
-              <label>
-                <span>SIGNALING SERVER URL (OPTIONAL)</span>
-                <div className="input-wrap"><Settings size={18} /><input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} placeholder="https://your-signaling-server.onrender.com" /></div>
-              </label>
+              <>
+                <label>
+                  <span>SIGNALING SERVER URL (OPTIONAL)</span>
+                  <div className="input-wrap"><Settings size={18} /><input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} placeholder="https://your-signaling-server.onrender.com" /></div>
+                </label>
+                <label>
+                  <span>METERED.CA APP NAME (FREE TURN)</span>
+                  <div className="input-wrap"><Settings size={18} /><input value={meteredDomain} onChange={(e) => setMeteredDomain(e.target.value)} placeholder="e.g. myapp" /></div>
+                </label>
+                <label>
+                  <span>METERED.CA API KEY (FREE TURN)</span>
+                  <div className="input-wrap"><Settings size={18} /><input value={meteredKey} onChange={(e) => setMeteredKey(e.target.value)} type="password" placeholder="Metered API Key" /></div>
+                </label>
+              </>
             )}
 
             {error && <div className="form-error">{error}</div>}
@@ -220,7 +253,7 @@ function Landing({ onEnter }) {
             </button>
 
             <button type="button" className="switch-mode" style={{ marginTop: "4px", fontSize: "12px", opacity: 0.75 }} onClick={() => setShowServerInput((v) => !v)}>
-              <Settings size={13} /> {showServerInput ? "Hide server settings" : "Custom signaling server URL"}
+              <Settings size={13} /> {showServerInput ? "Hide custom settings" : "Custom signaling & TURN server settings"}
             </button>
             <div className="join-card__note"><Check size={14} /> Camera and mic are always your choice</div>
           </form>
@@ -685,7 +718,8 @@ function MovieRoom({ session, onLeave }) {
       const hostPeerId = `philos-host-${cleanCode}`;
       const isHost = session.isHost !== false;
 
-      const initPeer = () => {
+      const initPeer = async () => {
+        const iceServers = await getActiveIceServers(session?.meteredDomain, session?.meteredKey);
         const myPeerId = isHost ? hostPeerId : `philos-guest-${cleanCode}-${Math.random().toString(36).substring(2, 7)}`;
         const peer = new Peer(myPeerId, {
           host: "0.peerjs.com",
@@ -693,7 +727,7 @@ function MovieRoom({ session, onLeave }) {
           path: "/",
           secure: true,
           config: {
-            iceServers: GLOBAL_ICE_SERVERS,
+            iceServers,
           },
         });
         peerRef.current = peer;
