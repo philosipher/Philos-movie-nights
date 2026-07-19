@@ -1000,6 +1000,7 @@ function MovieRoom({ session, onLeave }) {
   const copyInvite = async () => {
     const url = new URL(window.location.href);
     url.searchParams.set("room", session.roomCode);
+    url.searchParams.set("v", Date.now().toString(36));
     try {
       await navigator.clipboard.writeText(url.toString());
       setCopied(true);
