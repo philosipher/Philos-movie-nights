@@ -439,7 +439,27 @@ function MovieRoom({ session, onLeave }) {
   }, [addLocalTracks, createPeer, streamMeta]);
 
   const renegotiateAll = useCallback(() => {
-    peersRef.current.forEach((_peer, peerId) => makeOffer(peerId));
+    if (socketRef.current) {
+      peersRef.current.forEach((_peer, peerId) => makeOffer(peerId));
+    } else if (peerRef.current) {
+      const activeStreams = [cameraStreamRef.current, screenStreamRef.current].filter(Boolean);
+      dataConnsRef.current.forEach((_conn, targetPeerId) => {
+        activeStreams.forEach((stream) => {
+          const call = peerRef.current.call(targetPeerId, stream);
+          call?.on("stream", (remoteStream) => {
+            const isVideo = remoteStream.getVideoTracks().length > 0;
+            setRemoteMedia((current) => ({
+              ...current,
+              [targetPeerId]: {
+                ...current[targetPeerId],
+                screenStream: isVideo ? remoteStream : current[targetPeerId]?.screenStream,
+                cameraStream: remoteStream,
+              },
+            }));
+          });
+        });
+      });
+    }
   }, [makeOffer]);
 
   const peerRef = useRef(null);
@@ -627,15 +647,35 @@ function MovieRoom({ session, onLeave }) {
 
         peer.on("connection", (dataConn) => {
           setupDataConnection(dataConn);
+          const activeStreams = [cameraStreamRef.current, screenStreamRef.current].filter(Boolean);
+          activeStreams.forEach((stream) => {
+            const call = peer.call(dataConn.peer, stream);
+            call?.on("stream", (remoteStream) => {
+              const isVideo = remoteStream.getVideoTracks().length > 0;
+              setRemoteMedia((current) => ({
+                ...current,
+                [dataConn.peer]: {
+                  ...current[dataConn.peer],
+                  screenStream: isVideo ? remoteStream : current[dataConn.peer]?.screenStream,
+                  cameraStream: remoteStream,
+                },
+              }));
+            });
+          });
         });
 
         peer.on("call", (mediaCall) => {
           const localStreams = [cameraStreamRef.current, screenStreamRef.current].filter(Boolean);
           mediaCall.answer(localStreams[0] || undefined);
           mediaCall.on("stream", (remoteStream) => {
+            const isVideo = remoteStream.getVideoTracks().length > 0;
             setRemoteMedia((current) => ({
               ...current,
-              [mediaCall.peer]: { ...current[mediaCall.peer], cameraStream: remoteStream },
+              [mediaCall.peer]: {
+                ...current[mediaCall.peer],
+                screenStream: isVideo ? remoteStream : current[mediaCall.peer]?.screenStream,
+                cameraStream: remoteStream,
+              },
             }));
           });
         });
