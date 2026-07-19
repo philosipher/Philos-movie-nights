@@ -66,20 +66,21 @@ const GLOBAL_ICE_SERVERS = [
 ];
 
 async function getActiveIceServers(domain, key) {
-  const mDomain = domain || safeGetStorage("local", "philos-metered-domain", import.meta.env.VITE_METERED_DOMAIN || "");
+  const mDomain = domain || safeGetStorage("local", "philos-metered-domain", import.meta.env.VITE_METERED_DOMAIN || "philosmovienights");
   const mKey = key || safeGetStorage("local", "philos-metered-key", import.meta.env.VITE_METERED_KEY || "");
-  if (mDomain && mKey) {
-    try {
-      const res = await fetch(`https://${mDomain.trim()}.metered.live/api/v1/turn/credentials?apiKey=${mKey.trim()}`);
-      if (res.ok) {
-        const servers = await res.json();
-        if (Array.isArray(servers) && servers.length > 0) {
-          return servers;
-        }
+  const url = mKey 
+    ? `https://${mDomain.trim()}.metered.live/api/v1/turn/credentials?apiKey=${mKey.trim()}`
+    : `https://${mDomain.trim()}.metered.live/api/v1/turn/credentials`;
+  try {
+    const res = await fetch(url);
+    if (res.ok) {
+      const servers = await res.json();
+      if (Array.isArray(servers) && servers.length > 0) {
+        return servers;
       }
-    } catch {
-      // Fallback to static ice servers if metered fetch fails
     }
+  } catch {
+    // Fallback to static ice servers if metered fetch fails
   }
   return GLOBAL_ICE_SERVERS;
 }
@@ -283,9 +284,38 @@ function Landing({ onEnter }) {
         </div>
       </section>
 
-      <footer className="landing__footer shell"><Brand compact /><span>Good films. Better company.</span><small>© 2026 Philos Movie Nights</small></footer>
+      <footer className="landing__footer shell"><Brand compact /><span>Good films. Better company.</span><small>© 2026 Philos Philos Movie Nights</small></footer>
     </main>
   );
+}
+
+function MeteredFrameContainer({ roomUrl }) {
+  const containerRef = useRef(null);
+  useEffect(() => {
+    if (!roomUrl) return;
+    const scriptId = "metered-sdk-script";
+    let script = document.getElementById(scriptId);
+
+    const initFrame = () => {
+      if (window.MeteredFrame && containerRef.current) {
+        containerRef.current.innerHTML = "";
+        const frame = new window.MeteredFrame();
+        frame.init({ roomURL: roomUrl }, containerRef.current);
+      }
+    };
+
+    if (!script) {
+      script = document.createElement("script");
+      script.id = scriptId;
+      script.src = "https://cdn.metered.ca/sdk/frame/1.4.3/sdk-frame.min.js";
+      script.onload = initFrame;
+      document.body.appendChild(script);
+    } else if (window.MeteredFrame) {
+      initFrame();
+    }
+  }, [roomUrl]);
+
+  return <div ref={containerRef} className="metered-frame-wrap" style={{ width: "100%", height: "100%", minHeight: "520px", borderRadius: "12px", overflow: "hidden" }} />;
 }
 
 function VideoSurface({ stream, muted = false, className = "", style = {} }) {
